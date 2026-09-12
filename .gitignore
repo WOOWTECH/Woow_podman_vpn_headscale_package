@@ -10,7 +10,8 @@ secrets/
 .idea/
 .vscode/
 
-# Podman runtime-generated secrets
+# Podman runtime-generated secrets / rendered config
 config/headplane/cookie-secret
 config/headplane/api-key
-.env
+config/headscale/preauth-key
+config/headscale/config.runtime.yaml

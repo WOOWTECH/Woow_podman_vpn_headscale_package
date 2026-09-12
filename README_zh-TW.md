@@ -22,15 +22,15 @@
   <img src="https://img.shields.io/badge/Tailscale-官方客戶端相容-green?logo=tailscale" alt="Tailscale"/>
 </p>
 
-> **分支導覽**：你在 `podman` 分支（單機、免 K8s）。
-> 多租戶 **Kubernetes/K3s** 版（operator + CRD + proxy pods）請切換到 [`k3s` 分支](https://github.com/WOOWTECH/Woow_vpn_headscale_package/tree/k3s)。
-> [`main` 分支](https://github.com/WOOWTECH/Woow_vpn_headscale_package)為專案總覽。
+> **相關倉庫**：本倉庫是單機、免 K8s 版。
+> 多租戶 **Kubernetes/K3s** 版（Helm chart + proxy pods）請見 [`Woow_k3s_vpn_headscale_package`](https://github.com/WOOWTECH/Woow_k3s_vpn_headscale_package)。
+> Home Assistant OS add-on 設定請見 [`Woow_ha_vpn_headscale_package`](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package)。
 
 ---
 
 ## 總覽
 
-本分支在單一機器上用 **rootless Podman** + `podman-compose` 運行與 K3s 版相同且已驗證的 Headscale v0.29.2 + Headplane v0.7.0。適合 home lab、edge 裝置，或作為叢集故障時的備援控制平面。
+本倉庫在單一機器上用 **rootless Podman** + `podman-compose` 運行與 K3s 版相同且已驗證的 Headscale v0.29.2 + Headplane v0.7.0。適合 home lab、edge 裝置，或作為叢集故障時的備援控制平面。
 
 已在 Podman 4.9.3 / podman-compose 1.0.6（Ubuntu）實測：health 通過、Headplane 登入成功、**兩個 Tailscale 節點註冊 — 一個走內部網路、一個經公網（ngrok）— 並透過 WireGuard/DERP 互 ping**。
 
@@ -62,7 +62,7 @@ flowchart TB
 ## 倉庫結構
 
 ```
-podman branch/
+Woow_podman_vpn_headscale_package/
 ├── podman-compose.yml        # headscale + headplane 服務
 ├── deploy.sh                 # 一鍵自動化
 ├── .env.example              # SERVER_URL 模板
@@ -76,8 +76,8 @@ podman branch/
 ## 快速開始
 
 ```bash
-git clone -b podman https://github.com/WOOWTECH/Woow_vpn_headscale_package.git
-cd Woow_vpn_headscale_package
+git clone https://github.com/WOOWTECH/Woow_podman_vpn_headscale_package.git
+cd Woow_podman_vpn_headscale_package
 cp .env.example .env          # 可選：設定 SERVER_URL（ngrok URL / 自有網域）
 ./deploy.sh
 ```

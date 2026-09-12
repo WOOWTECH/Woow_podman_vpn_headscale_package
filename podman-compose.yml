@@ -6,7 +6,10 @@
 #
 # Usage:
 #   ./deploy.sh              # one-shot: configs, keys, start, verify
-# or manually:
+# or manually (config/headscale/config.runtime.yaml must exist first —
+# render it yourself, e.g. `sed "s|^server_url:.*|server_url: <url>|"
+# config/headscale/config.yaml > config/headscale/config.runtime.yaml`,
+# or just run ./deploy.sh once and re-use manual commands after):
 #   podman-compose up -d headscale
 #   # ...create user + apikey (see deploy.sh)...
 #   podman-compose up -d headplane
@@ -31,6 +34,10 @@ services:
     restart: unless-stopped
     volumes:
       - ./config/headscale:/etc/headscale:ro
+      # deploy.sh renders server_url from .env into this untracked
+      # copy and mounts it over the tracked config.yaml, so the
+      # git-tracked template is never edited in place.
+      - ./config/headscale/config.runtime.yaml:/etc/headscale/config.yaml:ro
       - headscale-data:/var/lib/headscale
       - headscale-run:/var/run/headscale
     healthcheck:
