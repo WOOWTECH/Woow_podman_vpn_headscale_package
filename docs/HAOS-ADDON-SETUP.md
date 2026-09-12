@@ -2,7 +2,7 @@
 
 Connect a Home Assistant OS (HAOS / Supervised) appliance to your self-hosted Headscale tailnet using the official community add-on ([hassio-addons/addon-tailscale](https://github.com/hassio-addons/addon-tailscale)).
 
-> **HA Container / Core users:** the add-on requires the Supervisor. Use the tailscale sidecar / proxy-pod pattern from `manifests/vpn-proxy/` instead.
+> **HA Container / Core users:** the add-on requires the Supervisor. Use the tailscale sidecar / proxy-pod pattern from [`manifests/vpn-proxy/` in `Woow_k3s_vpn_headscale_package`](https://github.com/WOOWTECH/Woow_k3s_vpn_headscale_package/tree/main/manifests/vpn-proxy) instead (this repo is Podman-only and does not ship K8s manifests).
 
 ---
 

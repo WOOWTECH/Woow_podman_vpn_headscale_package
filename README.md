@@ -22,15 +22,15 @@
   <img src="https://img.shields.io/badge/Tailscale-Official%20Client%20Compatible-green?logo=tailscale" alt="Tailscale"/>
 </p>
 
-> **Branch guide:** you are on the `podman` branch (single-node, no K8s).
-> For the multi-tenant **Kubernetes/K3s** stack (operator + CRDs + proxy pods), switch to the [`k3s` branch](https://github.com/WOOWTECH/Woow_vpn_headscale_package/tree/k3s).
-> The [`main` branch](https://github.com/WOOWTECH/Woow_vpn_headscale_package) holds the project overview.
+> **Related repos:** this repo is the single-node, no-K8s edition.
+> For the multi-tenant **Kubernetes/K3s** stack (Helm chart + proxy pods), see [`Woow_k3s_vpn_headscale_package`](https://github.com/WOOWTECH/Woow_k3s_vpn_headscale_package).
+> For the Home Assistant OS add-on setup, see [`Woow_ha_vpn_headscale_package`](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package).
 
 ---
 
 ## Overview
 
-This branch runs the same verified Headscale v0.29.2 + Headplane v0.7.0 stack as the K3s edition, but on a single machine with **rootless Podman** + `podman-compose`. Ideal for home labs, edge boxes, or as a fallback control plane when the cluster is down.
+This repo runs the same verified Headscale v0.29.2 + Headplane v0.7.0 stack as the K3s edition, but on a single machine with **rootless Podman** + `podman-compose`. Ideal for home labs, edge boxes, or as a fallback control plane when the cluster is down.
 
 Verified live on Podman 4.9.3 / podman-compose 1.0.6 (Ubuntu): health pass, Headplane login, and **two Tailscale nodes registered — one via the internal network, one via the public internet (ngrok) — pinging each other over WireGuard/DERP**.
 
@@ -62,7 +62,7 @@ flowchart TB
 ## Repository Structure
 
 ```
-podman branch/
+Woow_podman_vpn_headscale_package/
 ├── podman-compose.yml        # headscale + headplane services
 ├── deploy.sh                 # one-shot automation
 ├── .env.example              # SERVER_URL template
@@ -76,8 +76,8 @@ podman branch/
 ## Quick Start
 
 ```bash
-git clone -b podman https://github.com/WOOWTECH/Woow_vpn_headscale_package.git
-cd Woow_vpn_headscale_package
+git clone https://github.com/WOOWTECH/Woow_podman_vpn_headscale_package.git
+cd Woow_podman_vpn_headscale_package
 cp .env.example .env          # optionally set SERVER_URL (ngrok URL / your domain)
 ./deploy.sh
 ```
