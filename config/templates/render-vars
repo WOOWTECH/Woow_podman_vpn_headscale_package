@@ -1,0 +1,10 @@
+# Variables scripts/install.sh may substitute for @@NAME@@ in config/templates/** (decision
+# D2). They come straight from ~/.config/headscale/headscale.env, after the validation in
+# scripts/render-args.sh. This whitelist is separate from quadlet/render-vars so a unit file
+# can never pick up a value that only belongs in a config file, or the other way round.
+HEADSCALE_SERVER_URL
+HEADSCALE_BASE_DOMAIN
+HEADSCALE_IPV4_PREFIX
+HEADSCALE_IPV6_PREFIX
+HEADSCALE_LOG_LEVEL
+HEADPLANE_COOKIE_SECURE

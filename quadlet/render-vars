@@ -1,0 +1,8 @@
+# Variables scripts/install.sh may substitute for @@NAME@@ in quadlet/* (decision D2).
+# Anything else in a unit file is copied byte for byte, and an unlisted token is an error.
+#
+# All three are computed by scripts/render-args.sh from the bind address and port pairs in
+# ~/.config/headscale/headscale.env, because "bind = all" has to drop the address entirely.
+HEADSCALE_PUBLISH
+HEADSCALE_METRICS_PUBLISH
+HEADPLANE_PUBLISH
