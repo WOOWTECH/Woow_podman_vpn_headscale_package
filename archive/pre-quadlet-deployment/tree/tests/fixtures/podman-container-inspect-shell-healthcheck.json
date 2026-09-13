@@ -1,0 +1,10 @@
+[
+  {
+    "Id": "fixture-container-id",
+    "Config": {
+      "Healthcheck": {
+        "Test": ["CMD-SHELL", "/ko-app/headscale health"]
+      }
+    }
+  }
+]

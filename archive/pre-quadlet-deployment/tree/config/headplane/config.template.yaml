@@ -1,0 +1,11 @@
+# Headplane v0.7.0 runtime configuration.
+# Do not add integration: Headplane 0.7.0 validates Kubernetes fields when disabled.
+server:
+  host: "{{HEADPLANE_BIND_ADDR}}"
+  port: {{HEADPLANE_PORT}}
+  cookie_secret_path: "/etc/headplane/cookie-secret"
+  cookie_secure: {{HEADPLANE_COOKIE_SECURE}}
+
+headscale:
+  url: "http://headscale:{{HEADSCALE_PORT}}"
+  api_key_path: "/etc/headplane/api-key"

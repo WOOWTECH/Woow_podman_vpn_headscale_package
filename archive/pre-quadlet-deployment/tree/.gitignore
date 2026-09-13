@@ -1,0 +1,22 @@
+# Secrets — never commit real keys
+*.key
+*.pem
+*.secret
+.env
+secrets/
+
+# Generated runtime configuration and state
+runtime/
+backups/
+__pycache__/
+*.py[cod]
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Podman runtime-generated secrets
+config/headplane/cookie-secret
+config/headplane/api-key
