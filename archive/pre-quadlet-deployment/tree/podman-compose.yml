@@ -1,0 +1,63 @@
+services:
+  headscale:
+    image: localhost/woow-headscale:0.29.3
+    container_name: headscale
+    command: ["serve"]
+    labels:
+      org.woow-headscale.project: woow-headscale
+      org.woow-headscale.project-dir: ${WOOW_PROJECT_DIR}
+      com.docker.compose.project: ${COMPOSE_PROJECT_NAME}
+      io.podman.compose.project: ${COMPOSE_PROJECT_NAME}
+    ports:
+      - "${HEADSCALE_HOST_BIND_ADDR:-0.0.0.0}:${HEADSCALE_HOST_PORT:-28080}:${HEADSCALE_PORT:-8080}"
+      - "${HEADSCALE_METRICS_HOST_BIND_ADDR:-127.0.0.1}:${HEADSCALE_METRICS_HOST_PORT:-29090}:${HEADSCALE_METRICS_PORT:-9090}"
+    restart: always
+    healthcheck:
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 12
+    volumes:
+      - ./runtime/headscale/config.yaml:/etc/headscale/config.yaml:ro
+      - ./runtime/headscale/extra_records.json:/etc/headscale/extra_records.json:ro
+      - ./config/headscale/policy.json:/etc/headscale/policy.json:ro
+      - headscale-data:/var/lib/headscale
+      - headscale-run:/var/run/headscale
+  headplane:
+    image: ghcr.io/tale/headplane:0.7.0
+    container_name: headplane
+    labels:
+      org.woow-headscale.project: woow-headscale
+      org.woow-headscale.project-dir: ${WOOW_PROJECT_DIR}
+      com.docker.compose.project: ${COMPOSE_PROJECT_NAME}
+      io.podman.compose.project: ${COMPOSE_PROJECT_NAME}
+    ports:
+      - "${HEADPLANE_HOST_BIND_ADDR:-127.0.0.1}:${HEADPLANE_HOST_PORT:-23000}:${HEADPLANE_PORT:-3000}"
+    restart: always
+    volumes:
+      - ./runtime/headplane/config.yaml:/etc/headplane/config.yaml:ro
+      - ./runtime/headplane/cookie-secret:/etc/headplane/cookie-secret:ro
+      - ./runtime/headplane/api-key:/etc/headplane/api-key:ro
+      - headplane-data:/var/lib/headplane
+    depends_on:
+      - headscale
+
+volumes:
+  headscale-data:
+    labels:
+      org.woow-headscale.project: woow-headscale
+      org.woow-headscale.project-dir: ${WOOW_PROJECT_DIR}
+      com.docker.compose.project: ${COMPOSE_PROJECT_NAME}
+      io.podman.compose.project: ${COMPOSE_PROJECT_NAME}
+  headscale-run:
+    labels:
+      org.woow-headscale.project: woow-headscale
+      org.woow-headscale.project-dir: ${WOOW_PROJECT_DIR}
+      com.docker.compose.project: ${COMPOSE_PROJECT_NAME}
+      io.podman.compose.project: ${COMPOSE_PROJECT_NAME}
+  headplane-data:
+    labels:
+      org.woow-headscale.project: woow-headscale
+      org.woow-headscale.project-dir: ${WOOW_PROJECT_DIR}
+      com.docker.compose.project: ${COMPOSE_PROJECT_NAME}
+      io.podman.compose.project: ${COMPOSE_PROJECT_NAME}

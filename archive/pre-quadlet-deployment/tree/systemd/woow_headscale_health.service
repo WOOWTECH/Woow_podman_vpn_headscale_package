@@ -1,0 +1,12 @@
+[Unit]
+Description=Woow Headscale live container healthcheck
+After=woow_headscale.service
+
+[Service]
+Type=oneshot
+ExecCondition=/usr/bin/podman container exists headscale
+ExecCondition=/bin/sh -c 'test "$(/usr/bin/podman container inspect --format={{.State.Running}} headscale 2>/dev/null)" = true'
+ExecStart=/usr/bin/podman healthcheck run headscale
+
+[Install]
+WantedBy=default.target

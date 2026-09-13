@@ -1,0 +1,54 @@
+# Headscale v0.29.3 runtime configuration.
+# Render this tracked template with scripts/runtime_config.py; do not edit it at runtime.
+server_url: {{SERVER_URL}}
+
+listen_addr: "{{HEADSCALE_BIND_ADDR}}:{{HEADSCALE_PORT}}"
+metrics_listen_addr: "{{HEADSCALE_METRICS_BIND_ADDR}}:{{HEADSCALE_METRICS_PORT}}"
+
+grpc_listen_addr: 127.0.0.1:50443
+grpc_allow_insecure: false
+
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
+
+prefixes:
+  v4: {{IPV4_PREFIX}}
+  v6: {{IPV6_PREFIX}}
+  allocation: sequential
+
+database:
+  type: sqlite
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+    write_ahead_log: true
+
+derp:
+  server:
+    enabled: false
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
+  auto_update_enabled: true
+  update_frequency: 24h
+
+dns:
+  magic_dns: true
+  base_domain: {{MAGIC_DNS_BASE_DOMAIN}}
+  nameservers:
+    global:
+      - 1.1.1.1
+      - 8.8.8.8
+  extra_records_path: /etc/headscale/extra_records.json
+
+policy:
+  mode: file
+  path: /etc/headscale/policy.json
+
+unix_socket: /var/run/headscale/headscale.sock
+unix_socket_permission: "0770"
+
+log:
+  level: {{LOG_LEVEL}}
+  format: text
+
+logtail:
+  enabled: false

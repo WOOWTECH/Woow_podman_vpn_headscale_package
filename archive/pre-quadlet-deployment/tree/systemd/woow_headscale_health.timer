@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically drive the Woow Headscale container healthcheck
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=5s
+Persistent=true
+Unit=woow_headscale_health.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,14 @@
+[
+  {
+    "Config": {
+      "Entrypoint": ["/ko-app/headscale"],
+      "Labels": {
+        "org.opencontainers.image.version": "0.29.3",
+        "org.woow-headscale.runtime": "headscale",
+        "org.woow-headscale.source-image": "test-source",
+        "org.woow-headscale.build-contract": "test-contract",
+        "org.woow-headscale.recipe-sha256": "test-recipe"
+      }
+    }
+  }
+]
