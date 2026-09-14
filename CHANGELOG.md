@@ -24,10 +24,12 @@
 - `tests/lock-release.sh` — vendored with the library: a script that ends normally must give the
   per-app lock back, and no script may carry a private lock-held flag or a bare `trap ... EXIT`
   after taking the lock.
-- `tests/lint-scope.sh` — pins what `tests/lint-repo.sh` looks at: its three shape heuristics skip
-  the preserved `archive/pre-quadlet-deployment/` tree and stay fatal at the repository root,
-  while the value gates (literal credentials, `tests/leaked-value-scan.py`) still read the
-  archive.
+- `tests/lint-scope.sh` — pins what `tests/lint-repo.sh` looks at: the secret-shape gate reads the
+  preserved `archive/pre-quadlet-deployment/` tree and is fatal there (one file is exempt from the
+  `hskey-` shape alone: the masked `tests/test_validate_api_key.py` fixture); the two non-secret
+  heuristics (the ngrok placeholder, the D1 compose scan) skip that tree and stay fatal at the
+  repository root; the value gates (literal credentials, `tests/leaked-value-scan.py`) and the
+  tracked-path gate read everything.
 - `.github/workflows/quadlet-ci.yml` and `.github/workflows/repo-checks.yml`.
 
 ### Changed
@@ -43,10 +45,22 @@
   `trap ... EXIT`, which used to replace the handler `ql_lock` arms and leave the lock directory
   behind after a clean run.
 - `tests/lint-repo.sh` is aware of `archive/pre-quadlet-deployment/` (added on `main` after this
-  branch forked): its key-shape, ngrok-token and D1 compose scans skip the preserved tree instead
-  of demanding edits to files kept byte-identical on purpose — the same reasoning `main`'s
-  ShellCheck `ignore_paths: archive` recorded. The D1 compose pattern is now anchored to the
-  repository root like its `^deploy.sh$` neighbour.
+  branch forked). Its ngrok-token and D1 compose scans skip the preserved tree instead of demanding
+  edits to files kept byte-identical on purpose — the same reasoning `main`'s ShellCheck
+  `ignore_paths: archive` recorded. Its **secret-shape** scan does not skip it: a private key or a
+  live Headscale key planted under the archive is as dangerous as one at the root, so only the one
+  file that actually collides is exempt — `archive/pre-quadlet-deployment/tree/tests/`
+  `test_validate_api_key.py`, a masked `hskey-api-…-***` fixture — and only from the `hskey-`
+  pattern; every other shape is still fatal in that file.
+  (An earlier revision of this branch excluded the whole archive from every shape gate. That lost
+  real coverage relative to the deleted `.github/workflows/ci.yml`; it is corrected here and pinned
+  by `tests/lint-scope.sh`.)
+- `tests/lint-repo.sh` also refuses the full set of runtime secret/config paths the deleted
+  `ci.yml` no-secrets job refused — `.env`, `config/headplane/cookie-secret`,
+  `config/headplane/api-key`, `config/headscale/preauth-key`,
+  `config/headscale/config.runtime.yaml` — alongside this deployment's `config/cookie-secret` and
+  `config/api-key`.
+- The D1 compose pattern is now anchored to the repository root like its `^deploy.sh$` neighbour.
 - Both READMEs are Quadlet-first, and explain why this repository has no `migrate-legacy.sh`.
 - Ports are published on `127.0.0.1` by default. The compose deployment published the control
   plane on `0.0.0.0`.
@@ -57,12 +71,19 @@
 ### Removed
 - `podman-compose.yml`, `deploy.sh`, `.env.example`, the pre-rendered `config/headscale/*` and
   `config/headplane/*`, and the compose-era `.github/workflows/ci.yml` (decision D1). The whole
-  compose deployment is kept at the **`compose-final`** tag. Nothing is lost with that workflow:
-  its `bash -n` step covered only `deploy.sh`, which this branch removes; its ShellCheck job is
-  replaced by `quadlet-ci.yml`'s (`scripts/**/*.sh tests/*.sh` — every shell script this
-  repository owns, the preserved tree excluded either way); and its no-secrets job is a subset of
-  `tests/lint-repo.sh` plus `tests/leaked-value-scan.py`, which additionally refuse key-shaped
-  strings and the three live values the compose host kept outside git.
+  compose deployment is kept at the **`compose-final`** tag. Its `bash -n` step covered only
+  `deploy.sh`, which this branch removes; its ShellCheck job is replaced by `quadlet-ci.yml`'s
+  (`scripts/**/*.sh tests/*.sh` — every shell script this repository owns, the preserved tree
+  excluded either way).
+  Its **no-secrets** job is replaced by `tests/lint-repo.sh` plus `tests/leaked-value-scan.py` —
+  but only after the fixes recorded under *Changed* above. As first written, this branch claimed
+  that job was "a subset" of the new tests and that nothing was lost. **That was wrong**: the new
+  linter excluded the entire archive from its shape gates while the deleted job scanned the whole
+  tree with one file excluded, and it checked two of the job's five tracked runtime paths. Both
+  gaps are closed, so the replacement is now a genuine superset: the deleted job's whole-tree
+  private-key and `hskey-` scans and its full five-path tracked-file gate are all present, and the
+  new tests additionally refuse other key/token shapes and the three live values the compose host
+  kept outside git.
 - The optional ngrok sidecar. Its free-tier URL changes on every restart, which would leave the
   rendered `server_url` stale after a unit restart. Still available at `compose-final`.
 - The `woow_headscale_health.{service,timer}` fallback health scheduler: podman's native

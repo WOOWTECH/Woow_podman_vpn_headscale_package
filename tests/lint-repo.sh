@@ -10,12 +10,17 @@
 # openclaw host (see its README). It is never installed, sourced or executed, and editing a file
 # in it to satisfy a linter would defeat the point of preserving it - the same reasoning
 # .github/workflows/ci.yml recorded on main when it gave ShellCheck `ignore_paths: archive`.
-# So the three SHAPE heuristics below - key/token shapes, the ngrok-token assignment and the D1
-# compose-file scan - skip that tree: what they match there is a masked test fixture, a
-# `NGROK_AUTHTOKEN=<token>` placeholder in documentation and the compose files the archive exists
-# to hold. The two VALUE gates still read every tracked file, archive included: the literal
-# credential scan below and tests/leaked-value-scan.py, which is what actually proves no live
-# secret is in the tree. tests/lint-scope.sh pins both halves of that split.
+# That is a reason to exempt the preserved files that actually collide with a heuristic, and
+# nothing more: SECRET-SHAPE scanning reads the archive like any other tracked tree, because a
+# private key or a live Headscale key dropped in there would be exactly as dangerous as one at
+# the root. Exactly one preserved file is exempt, by path and from one pattern only:
+#   archive/pre-quadlet-deployment/tree/tests/test_validate_api_key.py carries a MASKED
+#   ("hskey-api-...-***") key fixture, so it is exempt from the hskey shape alone - every other
+#   shape, that file included, is still fatal.
+# Two non-secret heuristics do skip the preserved tree, for the material it exists to hold: the
+# `NGROK_AUTHTOKEN=<token>` placeholder in its documentation, and the D1 compose-file scan.
+# The two VALUE gates read every tracked file, archive included: the literal credential scan
+# below and tests/leaked-value-scan.py. tests/lint-scope.sh pins every half of that split.
 #   3. both READMEs lead with the Quadlet install and point Docker users at compose-final
 #   4. repo-specific checks: image pin parity between quadlet/, Containerfile and
 #      scripts/common.sh, the settings example carries no credential, and both configuration
@@ -35,8 +40,10 @@ mapfile -t files < <(git ls-files --cached --others --exclude-standard \
   | grep -vE '^(scripts/lib/quadlet-lib\.sh|tests/lint-repo\.sh)$' || true)
 text=()
 for f in "${files[@]}"; do [[ -f $f ]] && grep -Iq . "$f" 2>/dev/null && text+=("$f"); done
-# the preserved tree, excluded from the shape heuristics only (see the header)
+# the preserved tree, excluded from the two non-secret heuristics only (see the header)
 ARCHIVE_RE='^archive/pre-quadlet-deployment/'
+# the single preserved file exempt from the hskey shape, and from that shape alone
+MASKED_KEY_FIXTURE='archive/pre-quadlet-deployment/tree/tests/test_validate_api_key.py'
 live=() live_text=()
 for f in "${files[@]}"; do [[ $f =~ $ARCHIVE_RE ]] || live+=("$f"); done
 for f in "${text[@]}"; do [[ $f =~ $ARCHIVE_RE ]] || live_text+=("$f"); done
@@ -49,11 +56,19 @@ hits=$(grep -nHE "$cred_re" "${text[@]}" 2>/dev/null \
 if [[ -n $hits ]]; then fail "literal credential assignments at:"; where <<<"$hits"; else ok "no literal credential assignments"; fi
 
 # Well-known defaults, token formats, and the two Headscale key shapes. A truncated key with an
-# ellipsis is still refused: this repo does not carry key-shaped strings at all.
+# ellipsis is still refused: this repo does not carry key-shaped strings at all. Every tracked
+# text file is read, the preserved archive included - see the header for the one exemption.
 known='ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9_-]{32,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}'
 known+='|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJhbGciOi[A-Za-z0-9_-]{20,}\.'
-known+='|hskey-(auth|api|node)-[A-Za-z0-9_-]{8,}|2[A-Za-z0-9]{25}_[A-Za-z0-9]{20,}'
-hits=$(grep -nHE "$known" "${live_text[@]}" 2>/dev/null || true)
+known+='|2[A-Za-z0-9]{25}_[A-Za-z0-9]{20,}'
+hskey='hskey-(auth|api|node)-[A-Za-z0-9_-]{8,}'
+shape_text=() ; for f in "${text[@]}"; do [[ $f == "$MASKED_KEY_FIXTURE" ]] || shape_text+=("$f"); done
+hits=$(grep -nHE "$known|$hskey" "${shape_text[@]}" 2>/dev/null || true)
+# the masked fixture: every shape except the hskey one still applies to it
+if [[ -f $MASKED_KEY_FIXTURE ]] && grep -Iq . "$MASKED_KEY_FIXTURE" 2>/dev/null; then
+  fixture_hits=$(grep -nHE "$known" -- "$MASKED_KEY_FIXTURE" 2>/dev/null || true)
+  [[ -n $fixture_hits ]] && hits=${hits:+$hits$'\n'}$fixture_hits
+fi
 if [[ -n $hits ]]; then fail "key-shaped or token-shaped strings at:"; where <<<"$hits"; else ok "no key-shaped or token-shaped strings"; fi
 
 # The three live values the compose host kept outside git (ngrok token, Headplane API key and
@@ -107,8 +122,21 @@ grep -q 'cookie_secret_path: "/etc/headplane/cookie-secret"' config/templates/he
   || fail "the headplane template no longer reads the cookie secret from its mount path"
 grep -q 'api_key_path: "/etc/headplane/api-key"' config/templates/headplane/config.yaml \
   || fail "the headplane template no longer reads the API key from its mount path"
-for s in cookie-secret api-key; do
-  if git ls-files --error-unmatch "config/$s" >/dev/null 2>&1; then fail "config/$s is tracked; it must be a podman secret"; fi
+# Runtime secret/config files are generated on the host and gitignored. If one of them is ever
+# tracked, a real secret ships in git. The first two are this deployment's podman-secret mount
+# names; the rest are the compose-era runtime paths the deleted .github/workflows/ci.yml
+# no-secrets job refused, kept here because deploy.sh's own archived copy still writes them.
+runtime_paths=(
+  config/cookie-secret
+  config/api-key
+  .env
+  config/headplane/cookie-secret
+  config/headplane/api-key
+  config/headscale/preauth-key
+  config/headscale/config.runtime.yaml
+)
+for s in "${runtime_paths[@]}"; do
+  if git ls-files --error-unmatch "$s" >/dev/null 2>&1; then fail "$s is tracked; it must stay untracked/runtime-only"; fi
 done
 ok "Headscale checks done"
 
