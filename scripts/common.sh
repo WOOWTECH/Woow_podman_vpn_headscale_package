@@ -31,6 +31,12 @@ HEADPLANE_IMAGE=ghcr.io/tale/headplane:0.7.0@sha256:7bd6523a14567a43eb4ffa1e95e3
 LEGACY_UNITS=(woow_headscale.service woow_headscale_health.timer woow_headscale_health.service)
 # ------------------------------------------------------------------------------------------------
 export QL_APP=$APP
+# Any wait on container health in this repository runs the healthcheck itself instead of watching
+# .State.Health.Status: on a host where podman's transient healthcheck timers never fire for a
+# Quadlet-started container the recorded status stays "starting" for ever. The vendored library is
+# 1.6.0, which defaults this OFF (1.7.0 defaults it ON); setting it here is the call-site fix and
+# is a no-op once the newer library lands. Set QL_HEALTH_ACTIVE=0 in the environment to opt out.
+export QL_HEALTH_ACTIVE=${QL_HEALTH_ACTIVE:-1}
 
 app_state_dir() { printf '%s/%s' "${QL_STATE_ROOT:-$HOME/.local/state/woow-quadlet}" "$APP"; }
 

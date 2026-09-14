@@ -160,8 +160,10 @@ fi
 
 # ---- 8. Headscale first ---------------------------------------------------------------------------
 ql_apply_units "$APP" headscale.service
-app_wait_healthy headscale 300 headscale.service
-ql_wait_http "$(hs_url HEADSCALE /health)" '200' 120 \
+# One gate, and the HTTP probe is what it believes: on a host whose podman healthcheck timers
+# never fire for a Quadlet-started container, waiting on .State.Health.Status hangs for the
+# whole timeout and then calls a working control plane dead. See hs_wait_ready.
+hs_wait_ready 300 headscale.service \
   || ql_die "headscale does not answer on $(hs_url HEADSCALE /health); see: journalctl --user -u headscale.service -n 100"
 
 # ---- 9. the headscale-side objects Headplane needs ------------------------------------------------

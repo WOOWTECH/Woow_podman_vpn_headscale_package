@@ -43,11 +43,13 @@ for u in "${UNITS[@]}"; do
   if systemctl --user is-active --quiet "$u"; then pass "A1 $u is active"; else fail "A1 $u is not active"; fi
 done
 
-# A2 health. Only headscale carries a HealthCmd (we build that image); headplane counts as ready
-# once podman has seen it stay up, which is what ql_wait_container_healthy falls back to.
-for c in headscale headplane; do
-  if ql_wait_container_healthy "$c" 180 2>/dev/null; then pass "A2 $c is up"; else fail "A2 $c is not up"; fi
-done
+# A2 health. Only headscale carries a HealthCmd (we build that image), and it is judged by its
+# HTTP /health endpoint with an active `podman healthcheck run` as corroboration - never by the
+# recorded .State.Health.Status, whose timer does not fire on every host (see hs_wait_ready).
+# Headplane has no HealthCmd and counts as ready once podman has seen it stay up, which is what
+# ql_wait_container_healthy falls back to.
+if hs_wait_ready 180 headscale.service; then pass "A2 headscale is up"; else fail "A2 headscale is not up"; fi
+if ql_wait_container_healthy headplane 180 2>/dev/null; then pass "A2 headplane is up"; else fail "A2 headplane is not up"; fi
 
 # A3 published ports: exactly the three the settings ask for, on exactly those addresses
 check_port() { # check_port <container> <container port> <bind key prefix>

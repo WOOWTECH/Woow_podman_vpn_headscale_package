@@ -136,6 +136,18 @@ systemctl --user status headscale.service headplane.service
 journalctl --user -u headscale.service -f
 ```
 
+`podman inspect` may report `"Health": {"Status": "starting"}` for `headscale` for ever on some
+hosts: podman runs a container's healthcheck from a transient `<container>-healthcheck.timer`, and
+that timer does not always fire for a container Quadlet started, so the recorded status is never
+updated. It says nothing about the control plane. The scripts therefore never wait on it — the
+readiness gate (`hs_wait_ready`) polls `http://<bind>:<port>/health` and runs
+`podman healthcheck run headscale` itself. Check it the same way:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:28080/health   # want 200
+podman healthcheck run headscale && echo "healthcheck passes"
+```
+
 ## Upgrade
 
 ```bash

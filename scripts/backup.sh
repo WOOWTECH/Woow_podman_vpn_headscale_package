@@ -21,6 +21,8 @@ REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 . "$REPO/scripts/lib/quadlet-lib.sh"
 # shellcheck source=common.sh
 . "$REPO/scripts/common.sh"
+# shellcheck source=headscale-helpers.sh
+. "$REPO/scripts/headscale-helpers.sh"
 
 include_secrets=0
 while (($#)); do
@@ -108,7 +110,8 @@ chmod 600 "$archive.sha256"
 if ((${#was_running[@]})); then
   systemctl --user start "${was_running[@]}"
   restarted=1
-  app_wait_healthy headscale 300 headscale.service
+  hs_wait_ready 300 headscale.service \
+    || ql_die "headscale did not come back after the backup; see: journalctl --user -u headscale.service -n 100"
 fi
 ql_info "backup complete: $archive ($(du -h -- "$archive" | cut -f1))"
 printf '%s\n' "$archive"

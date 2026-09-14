@@ -34,6 +34,11 @@ Volume=headscale-run.volume:/var/run/headscale
 Volume=%h/.config/headscale/headscale:/etc/headscale:ro,Z
 # `headscale health` dials the unix socket in headscale-run, so this checks the running
 # server, not just the process. The image is ours, so the binary is guaranteed to be there.
+# This is what `podman healthcheck run headscale` and headplane.container's ExecStartPre= loop
+# execute on demand. The status podman RECORDS for it is not trusted anywhere in this
+# repository: podman updates it from a transient healthcheck timer that does not fire for a
+# Quadlet-started container on every host, so it can sit at "starting" while the server serves.
+# Readiness is decided by hs_wait_ready (HTTP /health) instead - see scripts/headscale-helpers.sh.
 HealthCmd=/ko-app/headscale health
 HealthInterval=15s
 HealthTimeout=5s

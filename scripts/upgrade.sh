@@ -22,6 +22,8 @@ REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 . "$REPO/scripts/lib/quadlet-lib.sh"
 # shellcheck source=common.sh
 . "$REPO/scripts/common.sh"
+# shellcheck source=headscale-helpers.sh
+. "$REPO/scripts/headscale-helpers.sh"
 
 no_backup=0 rebuild=()
 while (($#)); do
@@ -55,7 +57,7 @@ ql_warn "upgrade failed; rolling back to the units saved in $snap/units"
 app_snapshot_restore "$snap/units" \
   || ql_die "rollback failed: no usable snapshot. Inspect $snap and journalctl --user -u headscale.service"
 systemctl --user restart headscale.service headplane.service || true
-if ql_wait_container_healthy headscale 300 && "$REPO/tests/smoke.sh" --quick; then
+if hs_wait_ready 300 headscale.service && "$REPO/tests/smoke.sh" --quick; then
   ql_die "upgrade failed and was rolled back; the previous version is running again"
 fi
 ql_die "upgrade failed and the rollback is unhealthy too. Restore the data with:

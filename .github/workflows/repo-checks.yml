@@ -25,3 +25,6 @@ jobs:
 
       - name: The API key validator compiles and its rules hold
         run: python3 tests/test-validate-api-key.py
+
+      - name: The readiness gate survives a host whose healthcheck timers never fire
+        run: tests/health-gate.sh

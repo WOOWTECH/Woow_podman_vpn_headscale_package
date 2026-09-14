@@ -118,3 +118,31 @@ hs_url() {
   port=$(ql_env_get "WOOW_${1}_PORT")
   printf 'http://%s:%s%s' "$host" "$port" "${2:-}"
 }
+
+# hs_wait_ready [timeout_s] [unit]: the readiness gate for the Headscale control plane.
+#
+# The HTTP /health endpoint is the AUTHORITY here, not the container's recorded health status.
+# On some hosts (openclaw) podman's transient healthcheck timers never fire for a container
+# Quadlet started: `.State.Health.Status` stays "starting" for ever even though
+# `podman healthcheck run headscale` returns 0 and the server answers every request. A gate
+# that waits PASSIVELY on that status burns its whole timeout and then reports a working
+# control plane as dead - which is why nothing in this repository gates on it any more.
+#
+# The container healthcheck is still run, ACTIVELY and once, as corroboration: a mismatch is
+# reported as a warning, never as a veto. A headscale that is genuinely down answers neither,
+# so this returns 1 and the caller fails - see tests/health-gate.sh.
+hs_wait_ready() {
+  local timeout=${1:-300} unit=${2:-headscale.service} url
+  [[ -n ${QL_ENV_FILE:-} ]] || app_env_load
+  url=$(hs_url HEADSCALE /health)
+  if ! ql_wait_http "$url" '200' "$timeout"; then
+    ql_warn "headscale is not ready: $url did not answer 200 within ${timeout}s; see: journalctl --user -u $unit -n 100"
+    return 1
+  fi
+  if podman healthcheck run headscale >/dev/null 2>&1; then
+    ql_info "headscale is ready ($url -> 200, container healthcheck passes)"
+  else
+    ql_warn "headscale answers $url but 'podman healthcheck run headscale' does not pass; going by the HTTP probe"
+  fi
+  return 0
+}

@@ -21,6 +21,9 @@
 - `tests/dryrun.sh` (the real podman 4.9.3 Quadlet generator plus `systemd-analyze --user
   verify`), `tests/dryrun.local.sh`, `tests/smoke.sh`, `tests/lint-repo.sh`,
   `tests/leaked-value-scan.py`, `tests/test-validate-api-key.py`.
+- `tests/health-gate.sh` — the readiness gate under stubbed `podman`/`curl`: it passes while
+  `.State.Health.Status` is stuck at `starting`, and still fails when headscale is down or answers
+  `/health` with anything but 200. Wired into `.github/workflows/repo-checks.yml`.
 - `tests/lock-release.sh` — vendored with the library: a script that ends normally must give the
   per-app lock back, and no script may carry a private lock-held flag or a bare `trap ... EXIT`
   after taking the lock.
@@ -61,6 +64,16 @@
   `config/headscale/config.runtime.yaml` — alongside this deployment's `config/cookie-secret` and
   `config/api-key`.
 - The D1 compose pattern is now anchored to the repository root like its `^deploy.sh$` neighbour.
+- Readiness is judged by `hs_wait_ready` (`scripts/headscale-helpers.sh`) everywhere — in
+  `install.sh`, `upgrade.sh`'s rollback check, `backup.sh`'s restart and `tests/smoke.sh`'s A2.
+  It polls headscale's HTTP `/health` endpoint, which is the authority, and runs
+  `podman healthcheck run headscale` once as corroboration (a mismatch is a warning, not a veto).
+  Nothing waits passively on `.State.Health.Status` any more: on a host whose podman healthcheck
+  timers never fire for Quadlet-started containers that status never leaves `starting`, so the old
+  gate spent its 300 s timeout and then aborted an install of a control plane that was serving.
+  `scripts/common.sh` additionally exports `QL_HEALTH_ACTIVE=1`, so the library wait that remains
+  (headplane, which has no `HealthCmd=`) runs the check instead of watching it; the vendored 1.6.0
+  library defaults that off and 1.7.0 defaults it on, which makes the export a no-op later.
 - Both READMEs are Quadlet-first, and explain why this repository has no `migrate-legacy.sh`.
 - Ports are published on `127.0.0.1` by default. The compose deployment published the control
   plane on `0.0.0.0`.
@@ -86,5 +99,11 @@
   kept outside git.
 - The optional ngrok sidecar. Its free-tier URL changes on every restart, which would leave the
   rendered `server_url` stale after a unit restart. Still available at `compose-final`.
-- The `woow_headscale_health.{service,timer}` fallback health scheduler: podman's native
-  healthcheck timer does that job under Quadlet.
+- The `woow_headscale_health.{service,timer}` fallback health scheduler. It is **not** replaced by
+  podman's native healthcheck timer, which an earlier draft of this entry claimed: on at least one
+  target host (openclaw) the transient `*-healthcheck.timer` never fires for a container Quadlet
+  started, so `.State.Health.Status` stays `starting` for ever. What replaces the scheduler is
+  `hs_wait_ready`: the HTTP `/health` probe as the authority plus an active
+  `podman healthcheck run`, neither of which needs a timer. `HealthCmd=` stays on the unit — it is
+  what `podman healthcheck run` and Headplane's `ExecStartPre=` execute — but nothing in this
+  repository gates on the status podman records for it.
