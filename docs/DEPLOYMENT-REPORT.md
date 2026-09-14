@@ -1,5 +1,11 @@
 # Headscale + Headplane 自架 VPN — 部署報告
 
+> **Historical.** This report records the compose-era deployment, kept at the `compose-final` tag.
+> The supported deployment is now Quadlet + systemd; see the README.
+>
+> **歷史文件。** 本報告記錄 compose 時代的部署（保留於 `compose-final` tag）。目前支援的部署方式為 Quadlet + systemd，請見 README。
+
+
 > 部署時間：2026-07-16
 > 叢集：WoowTech K3s（10 nodes, v1.34.x）
 
@@ -35,7 +41,7 @@
 - **⚠️ 待辦**: 需在 Cloudflare Dashboard 新增 DNS CNAME records
 
 ### Phase 4 — PreAuthKey ✅
-- **Key**: `hskey-auth-yT1a_Ode64TP-...`（儲存在 Secret `test-device-preauth-key`）
+- **Key**: `hskey-auth-…`（已撤銷，僅為歷史紀錄）（儲存在 Secret `test-device-preauth-key`）
 - **設定**: reusable, 72h 到期
 - **連線指令**: `tailscale up --login-server=https://vpn-test.woowtech.io --authkey=<key>`
 - **⚠️ 待 DNS 設定後才能實測外部連線**

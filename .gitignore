@@ -1,17 +1,25 @@
-# Secrets — never commit real keys
+# Nothing generated at install time belongs in this repository. The rendered units live in
+# ~/.config/containers/systemd, the rendered container configuration in ~/.config/headscale,
+# the settings in ~/.config/headscale/headscale.env, and both Headplane secrets are podman
+# secrets. The patterns below are a backstop, not a design.
+
+# Secrets and key material
 *.key
 *.pem
 .env
 secrets/
+config/headplane/cookie-secret
+config/headplane/api-key
+config/headscale/preauth-key
+
+# Backups (scripts/backup.sh writes to ~/.local/share/woow-backups/headscale)
+backups/
+*.tar
+*.tar.gz
 
 # OS / editor
 .DS_Store
 *.swp
 .idea/
 .vscode/
-
-# Podman runtime-generated secrets / rendered config
-config/headplane/cookie-secret
-config/headplane/api-key
-config/headscale/preauth-key
-config/headscale/config.runtime.yaml
+__pycache__/

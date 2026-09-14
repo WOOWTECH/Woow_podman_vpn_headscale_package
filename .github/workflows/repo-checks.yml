@@ -1,0 +1,30 @@
+# .github/workflows/repo-checks.yml: repo-specific static checks. quadlet-ci.yml is vendored from
+# Woow_quadlet_migration_plan/lib and must not be edited; checks that belong to this repo live here.
+# Nothing here builds an image or starts a container.
+name: repo-checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Credentials, the leaked-value gate, compose removal (D1), READMEs, image pins
+        run: tests/lint-repo.sh
+
+      - name: What the linter looks at, and what it deliberately does not
+        run: tests/lint-scope.sh
+
+      - name: The API key validator compiles and its rules hold
+        run: python3 tests/test-validate-api-key.py
+
+      - name: The readiness gate survives a host whose healthcheck timers never fire
+        run: tests/health-gate.sh
