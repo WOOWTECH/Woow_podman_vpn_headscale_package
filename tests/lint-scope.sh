@@ -45,6 +45,9 @@ quote() { local line; while IFS= read -r line; do printf '      | %s\n' "$line";
 key_shaped() { printf 'hskey-%s-%s\n' 'api' 'Abcdefgh1234567890'; }
 # The two shapes the deleted .github/workflows/ci.yml no-secrets job scanned the whole tree for.
 private_key() { printf -- '-----%s OPENSSH PRIVATE KEY-----\n' 'BEGIN'; }
+# Real PGP armor puts the dashes after BLOCK, not after KEY. A pattern anchored on "KEY-----"
+# misses it, which is how it slipped past once. The deleted ci.yml job named PGP explicitly.
+pgp_private_key() { printf -- '-----%s PGP PRIVATE KEY BLOCK-----\n' 'BEGIN'; }
 live_hskey() { printf 'hskey-%s-%s\n' 'api' 'Zq9WmPl2Kx7Rt4Nv8Bc3Hd6Fg1Js5Aw'; }
 # The placeholder shape is the one actually preserved in the archive: the ngrok gate accepts no
 # placeholders, while the credential gate below skips a value starting with `<`.
@@ -97,6 +100,17 @@ case_ t_an_ngrok_token_outside_the_archive_is_fatal   fail 'docs/planted-env.txt
 # Headscale-key material, with one file excluded. Losing that over the archive was the coverage
 # regression these three cases exist to prevent coming back.
 case_ t_a_private_key_inside_the_archive_is_fatal     fail "$ARCHIVE/planted_id_ed25519" private_key 'key-shaped or token-shaped'
+# Each armor spelling gets its own case: restoring WHERE the gate scans is not the same as
+# restoring WHAT it matches, and the PGP spelling is the one that got away.
+case_ t_a_pgp_private_key_inside_the_archive_is_fatal fail "$ARCHIVE/planted_pgp.asc"    pgp_private_key 'key-shaped or token-shaped'
+case_ t_a_pgp_private_key_outside_the_archive_is_fatal fail 'docs/planted_pgp.asc'       pgp_private_key 'key-shaped or token-shaped'
+
+# --- no file is exempt from the shape gate -----------------------------------------------------
+# These two paths were once stripped from the file list before every gate, on the grounds that
+# they "carry the patterns by nature". Measured, both scored zero hits — so the exemption bought
+# nothing and hid a real key. These cases exist so it cannot come back silently.
+case_ t_a_private_key_in_the_vendored_lib_is_fatal    fail 'scripts/lib/quadlet-lib.sh' private_key 'key-shaped or token-shaped'
+case_ t_a_headscale_key_in_the_vendored_lib_is_fatal  fail 'scripts/lib/quadlet-lib.sh' live_hskey  'key-shaped or token-shaped'
 case_ t_a_headscale_key_inside_the_archive_is_fatal   fail "$ARCHIVE/planted_key.txt"    live_hskey  'key-shaped or token-shaped'
 case_ t_a_key_shape_inside_the_archive_is_fatal       fail "$ARCHIVE/planted-note.md"    key_shaped  'key-shaped or token-shaped'
 

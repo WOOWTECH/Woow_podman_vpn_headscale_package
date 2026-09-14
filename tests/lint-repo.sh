@@ -18,7 +18,9 @@
 #   ("hskey-api-...-***") key fixture, so it is exempt from the hskey shape alone - every other
 #   shape, that file included, is still fatal.
 # Two non-secret heuristics do skip the preserved tree, for the material it exists to hold: the
-# `NGROK_AUTHTOKEN=<token>` placeholder in its documentation, and the D1 compose-file scan.
+# placeholder ngrok auth-token assignment in its documentation, and the D1 compose-file scan.
+# (That token name is deliberately not spelled with its assignment here: this file is scanned too,
+# and a linter that has to exempt itself is a linter that can hide a real key in itself.)
 # The two VALUE gates read every tracked file, archive included: the literal credential scan
 # below and tests/leaked-value-scan.py. tests/lint-scope.sh pins every half of that split.
 #   3. both READMEs lead with the Quadlet install and point Docker users at compose-final
@@ -35,9 +37,14 @@ fail() { printf 'FAIL %s\n' "$*"; fails=$((fails + 1)); }
 ok() { printf 'ok   %s\n' "$*"; }
 where() { cut -d: -f1,2 | sed 's/^/     /'; }
 
-# The vendored library and this script itself carry the patterns by nature.
-mapfile -t files < <(git ls-files --cached --others --exclude-standard \
-  | grep -vE '^(scripts/lib/quadlet-lib\.sh|tests/lint-repo\.sh)$' || true)
+# Every tracked file is scanned, this script and the vendored library included. Neither is exempt:
+# measured against every gate here, both score zero hits, so the "they carry the patterns by
+# nature" exemption they used to have bought nothing and hid everything — a real OPENSSH private
+# key appended to scripts/lib/quadlet-lib.sh passed this linter while the exemption stood.
+# Patterns that would match this file's own source are built so they cannot (see `known` below:
+# the character classes are literal here and match no key), the same discipline tests/lint-scope.sh
+# uses. If a future pattern does self-match, narrow the pattern — do not exempt the file.
+mapfile -t files < <(git ls-files --cached --others --exclude-standard || true)
 text=()
 for f in "${files[@]}"; do [[ -f $f ]] && grep -Iq . "$f" 2>/dev/null && text+=("$f"); done
 # the preserved tree, excluded from the two non-secret heuristics only (see the header)
@@ -59,7 +66,10 @@ if [[ -n $hits ]]; then fail "literal credential assignments at:"; where <<<"$hi
 # ellipsis is still refused: this repo does not carry key-shaped strings at all. Every tracked
 # text file is read, the preserved archive included - see the header for the one exemption.
 known='ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9_-]{32,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}'
-known+='|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJhbGciOi[A-Za-z0-9_-]{20,}\.'
+# The trailing [A-Z ]* is what admits PGP armor: real PGP is "BEGIN PGP PRIVATE KEY BLOCK-----",
+# so the dashes do not follow "KEY" and a pattern anchored there misses it. The deleted ci.yml job
+# listed PGP explicitly; without this the replacement is not the superset the CHANGELOG claims.
+known+='|-----BEGIN [A-Z ]*PRIVATE KEY[A-Z ]*-----|eyJhbGciOi[A-Za-z0-9_-]{20,}\.'
 known+='|2[A-Za-z0-9]{25}_[A-Za-z0-9]{20,}'
 hskey='hskey-(auth|api|node)-[A-Za-z0-9_-]{8,}'
 shape_text=() ; for f in "${text[@]}"; do [[ $f == "$MASKED_KEY_FIXTURE" ]] || shape_text+=("$f"); done

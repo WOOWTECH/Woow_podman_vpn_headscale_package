@@ -93,10 +93,26 @@
   that job was "a subset" of the new tests and that nothing was lost. **That was wrong**: the new
   linter excluded the entire archive from its shape gates while the deleted job scanned the whole
   tree with one file excluded, and it checked two of the job's five tracked runtime paths. Both
-  gaps are closed, so the replacement is now a genuine superset: the deleted job's whole-tree
-  private-key and `hskey-` scans and its full five-path tracked-file gate are all present, and the
-  new tests additionally refuse other key/token shapes and the three live values the compose host
-  kept outside git.
+  gaps were closed — and then a **third** was found by re-checking rather than by re-asserting: the
+  restored private-key pattern was anchored on `PRIVATE KEY` followed immediately by the closing
+  dashes, so it still missed real PGP armor — which spells the header `BEGIN PGP PRIVATE KEY BLOCK`,
+  putting the dashes after `BLOCK` — a spelling the deleted job named explicitly. Restoring
+  *where* the gate scans is not the same as restoring *what* it matches. A **fourth** came with it:
+  `scripts/lib/quadlet-lib.sh` and `tests/lint-repo.sh` were stripped from the file list before
+  every gate as "carrying the patterns by nature" — measured, the vendored library scored zero hits
+  on every gate, and an OPENSSH private key appended to it passed the linter. Both exemptions are
+  gone; the one real collision (this linter's own documentation of the ngrok token name) is avoided
+  by not spelling that assignment, not by exempting the file.
+
+  Each of these is now pinned by a case in `tests/lint-scope.sh` that was **red-checked against the
+  pre-fix linter** — `t_a_pgp_private_key_{inside,outside}_the_archive_is_fatal`,
+  `t_a_{private,headscale}_key_in_the_vendored_lib_is_fatal`, all four failing before and passing
+  after. The claim here is therefore deliberately narrow: every gate the deleted job applied is
+  present and tested, over the whole tree, with no file exempt from the shape gate. Two known,
+  documented holes remain rather than being papered over: the masked-key fixture
+  `archive/…/tests/test_validate_api_key.py` is exempt from the `hskey` shape alone (matching what
+  `main`'s own later `ci.yml` did), and `tests/leaked-value-scan.py` recognises three recorded
+  values, so it detects those and not new material.
 - The optional ngrok sidecar. Its free-tier URL changes on every restart, which would leave the
   rendered `server_url` stale after a unit restart. Still available at `compose-final`.
 - The `woow_headscale_health.{service,timer}` fallback health scheduler. It is **not** replaced by
