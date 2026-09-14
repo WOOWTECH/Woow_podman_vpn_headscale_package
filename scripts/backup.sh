@@ -32,7 +32,7 @@ while (($#)); do
   shift
 done
 ql_require_rootless
-app_lock
+ql_lock "$APP"
 
 was_running=()
 for u in "${UNITS[@]}"; do
@@ -41,15 +41,14 @@ done
 staging=$(mktemp -d "${TMPDIR:-/tmp}/$APP-backup.XXXXXX")
 restarted=0
 cleanup() {
-  local status=$?
-  trap - EXIT
   rm -rf -- "$staging"
   if ((restarted == 0)) && ((${#was_running[@]})); then
     systemctl --user start "${was_running[@]}" >/dev/null 2>&1 || ql_warn "could not start ${was_running[*]} again"
   fi
-  exit "$status"
 }
-trap cleanup EXIT
+# a hook, not `trap ... EXIT`, which would replace the handler ql_lock armed and leave the
+# lock directory behind for the next run to report as a crash
+ql_cleanup backup_tidy cleanup
 
 # Stop in dependency order: Headplane holds an API session against Headscale.
 if ((${#was_running[@]})); then

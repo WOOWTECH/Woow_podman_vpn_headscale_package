@@ -1,0 +1,20 @@
+[Unit]
+Description=Woow Headscale Podman stack
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=@PROJECT_DIR@
+ExecStart=@PROJECT_DIR@/deploy.sh --from-systemd
+# Stop the fallback scheduler before removing the container. A missing user
+# manager or already-inactive health unit must not fail the main unit's stop.
+ExecStop=-/usr/bin/systemctl --user stop woow_headscale_health.timer woow_headscale_health.service
+ExecStop=@PROJECT_DIR@/deploy.sh --stop
+# Includes initial image pulls plus three bounded 120-second readiness windows.
+TimeoutStartSec=30min
+TimeoutStopSec=2min
+
+[Install]
+WantedBy=default.target

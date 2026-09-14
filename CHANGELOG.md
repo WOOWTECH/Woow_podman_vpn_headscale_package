@@ -21,9 +21,32 @@
 - `tests/dryrun.sh` (the real podman 4.9.3 Quadlet generator plus `systemd-analyze --user
   verify`), `tests/dryrun.local.sh`, `tests/smoke.sh`, `tests/lint-repo.sh`,
   `tests/leaked-value-scan.py`, `tests/test-validate-api-key.py`.
+- `tests/lock-release.sh` — vendored with the library: a script that ends normally must give the
+  per-app lock back, and no script may carry a private lock-held flag or a bare `trap ... EXIT`
+  after taking the lock.
+- `tests/lint-scope.sh` — pins what `tests/lint-repo.sh` looks at: its three shape heuristics skip
+  the preserved `archive/pre-quadlet-deployment/` tree and stay fatal at the repository root,
+  while the value gates (literal credentials, `tests/leaked-value-scan.py`) still read the
+  archive.
 - `.github/workflows/quadlet-ci.yml` and `.github/workflows/repo-checks.yml`.
 
 ### Changed
+- The vendored `scripts/lib/quadlet-lib.sh` is **1.6.0** (`ql_unlock`, `ql_cleanup`,
+  `ql_cleanup_clear`, the lock-fd and exec-resume fixes), the same copy the sibling packages
+  carry, together with the shared `tests/dryrun.sh`, `tests/lock-release.sh` and
+  `.github/workflows/quadlet-ci.yml`. All four are listed in `scripts/lib/quadlet-lib.manifest`
+  and CI checks them with `sha256sum -c`.
+- The per-app lock is taken with `ql_lock "$APP"` directly. The local `app_lock` wrapper and its
+  private `WOOW_LOCK_HELD` flag are gone: the flag had no liveness check and defeated the
+  library's exec-resume path when `upgrade.sh` hands off to `install.sh`. Tidy-up in
+  `install.sh`, `backup.sh` and `restore.sh` is registered with `ql_cleanup` instead of
+  `trap ... EXIT`, which used to replace the handler `ql_lock` arms and leave the lock directory
+  behind after a clean run.
+- `tests/lint-repo.sh` is aware of `archive/pre-quadlet-deployment/` (added on `main` after this
+  branch forked): its key-shape, ngrok-token and D1 compose scans skip the preserved tree instead
+  of demanding edits to files kept byte-identical on purpose — the same reasoning `main`'s
+  ShellCheck `ignore_paths: archive` recorded. The D1 compose pattern is now anchored to the
+  repository root like its `^deploy.sh$` neighbour.
 - Both READMEs are Quadlet-first, and explain why this repository has no `migrate-legacy.sh`.
 - Ports are published on `127.0.0.1` by default. The compose deployment published the control
   plane on `0.0.0.0`.
@@ -34,7 +57,12 @@
 ### Removed
 - `podman-compose.yml`, `deploy.sh`, `.env.example`, the pre-rendered `config/headscale/*` and
   `config/headplane/*`, and the compose-era `.github/workflows/ci.yml` (decision D1). The whole
-  compose deployment is kept at the **`compose-final`** tag.
+  compose deployment is kept at the **`compose-final`** tag. Nothing is lost with that workflow:
+  its `bash -n` step covered only `deploy.sh`, which this branch removes; its ShellCheck job is
+  replaced by `quadlet-ci.yml`'s (`scripts/**/*.sh tests/*.sh` — every shell script this
+  repository owns, the preserved tree excluded either way); and its no-secrets job is a subset of
+  `tests/lint-repo.sh` plus `tests/leaked-value-scan.py`, which additionally refuse key-shaped
+  strings and the three live values the compose host kept outside git.
 - The optional ngrok sidecar. Its free-tier URL changes on every restart, which would leave the
   rendered `server_url` stale after a unit restart. Still available at `compose-final`.
 - The `woow_headscale_health.{service,timer}` fallback health scheduler: podman's native

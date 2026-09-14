@@ -1,0 +1,15 @@
+services:
+  ngrok:
+    image: docker.io/ngrok/ngrok:3
+    container_name: ngrok
+    command: ${NGROK_COMMAND:-http headscale:8080}
+    labels:
+      org.woow-headscale.project: woow-headscale
+      org.woow-headscale.project-dir: ${WOOW_PROJECT_DIR}
+      com.docker.compose.project: ${COMPOSE_PROJECT_NAME}
+      io.podman.compose.project: ${COMPOSE_PROJECT_NAME}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    ports:
+      - "127.0.0.1:24040:4040"
+    restart: always

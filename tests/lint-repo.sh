@@ -5,6 +5,17 @@
 #   1. no plaintext credentials, key-shaped strings, or any of the three live values the
 #      compose host kept outside git (tests/leaked-value-scan.py)
 #   2. the compose deployment is gone (decision D1: Docker users use the compose-final tag)
+#
+# archive/pre-quadlet-deployment/ is the compose-era tree preserved byte-identical from the
+# openclaw host (see its README). It is never installed, sourced or executed, and editing a file
+# in it to satisfy a linter would defeat the point of preserving it - the same reasoning
+# .github/workflows/ci.yml recorded on main when it gave ShellCheck `ignore_paths: archive`.
+# So the three SHAPE heuristics below - key/token shapes, the ngrok-token assignment and the D1
+# compose-file scan - skip that tree: what they match there is a masked test fixture, a
+# `NGROK_AUTHTOKEN=<token>` placeholder in documentation and the compose files the archive exists
+# to hold. The two VALUE gates still read every tracked file, archive included: the literal
+# credential scan below and tests/leaked-value-scan.py, which is what actually proves no live
+# secret is in the tree. tests/lint-scope.sh pins both halves of that split.
 #   3. both READMEs lead with the Quadlet install and point Docker users at compose-final
 #   4. repo-specific checks: image pin parity between quadlet/, Containerfile and
 #      scripts/common.sh, the settings example carries no credential, and both configuration
@@ -24,6 +35,11 @@ mapfile -t files < <(git ls-files --cached --others --exclude-standard \
   | grep -vE '^(scripts/lib/quadlet-lib\.sh|tests/lint-repo\.sh)$' || true)
 text=()
 for f in "${files[@]}"; do [[ -f $f ]] && grep -Iq . "$f" 2>/dev/null && text+=("$f"); done
+# the preserved tree, excluded from the shape heuristics only (see the header)
+ARCHIVE_RE='^archive/pre-quadlet-deployment/'
+live=() live_text=()
+for f in "${files[@]}"; do [[ $f =~ $ARCHIVE_RE ]] || live+=("$f"); done
+for f in "${text[@]}"; do [[ $f =~ $ARCHIVE_RE ]] || live_text+=("$f"); done
 
 # ---- 1. credentials --------------------------------------------------------------------------
 cred_re='(^|[^A-Za-z0-9_])[A-Z0-9_]*(PASSWORD|PASSWD|SECRET|TOKEN|_KEY)=[^[:space:]$@<"'\''`{}(%]'
@@ -37,7 +53,7 @@ if [[ -n $hits ]]; then fail "literal credential assignments at:"; where <<<"$hi
 known='ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-[A-Za-z0-9_-]{32,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}'
 known+='|-----BEGIN [A-Z ]*PRIVATE KEY-----|eyJhbGciOi[A-Za-z0-9_-]{20,}\.'
 known+='|hskey-(auth|api|node)-[A-Za-z0-9_-]{8,}|2[A-Za-z0-9]{25}_[A-Za-z0-9]{20,}'
-hits=$(grep -nHE "$known" "${text[@]}" 2>/dev/null || true)
+hits=$(grep -nHE "$known" "${live_text[@]}" 2>/dev/null || true)
 if [[ -n $hits ]]; then fail "key-shaped or token-shaped strings at:"; where <<<"$hits"; else ok "no key-shaped or token-shaped strings"; fi
 
 # The three live values the compose host kept outside git (ngrok token, Headplane API key and
@@ -45,11 +61,11 @@ if [[ -n $hits ]]; then fail "key-shaped or token-shaped strings at:"; where <<<
 python3 tests/leaked-value-scan.py || fail "a live host secret is in the tracked tree"
 
 # An ngrok auth token was part of the compose deployment's .env. It must never reach this repo.
-hits=$(grep -nHE 'NGROK_AUTHTOKEN[[:space:]]*[=:][[:space:]]*[^[:space:]#]' "${text[@]}" 2>/dev/null || true)
+hits=$(grep -nHE 'NGROK_AUTHTOKEN[[:space:]]*[=:][[:space:]]*[^[:space:]#]' "${live_text[@]}" 2>/dev/null || true)
 if [[ -n $hits ]]; then fail "an ngrok auth token assignment at:"; where <<<"$hits"; else ok "no ngrok auth token"; fi
 
 # ---- 2. D1: compose files are gone -------------------------------------------------------------
-left=$(printf '%s\n' "${files[@]}" | grep -E '(^|/)(docker|podman)-compose[^/]*\.ya?ml$|^compose/|^\.env\.example$|^deploy\.sh$' || true)
+left=$(printf '%s\n' "${live[@]}" | grep -E '^(docker|podman)-compose[^/]*\.ya?ml$|^compose/|^\.env\.example$|^deploy\.sh$' || true)
 if [[ -n $left ]]; then fail "compose deployment files remain (D1):"; while IFS= read -r l; do printf "     %s\n" "$l"; done <<<"$left"; else ok "no compose files (D1)"; fi
 
 # ---- 3. READMEs ---------------------------------------------------------------------------------

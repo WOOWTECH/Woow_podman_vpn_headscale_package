@@ -40,15 +40,16 @@ done
 archive=$(realpath -- "$archive")
 [[ -f $archive ]] || ql_die "archive not found: $archive"
 ql_require_rootless
-app_lock
+ql_lock "$APP"
 rollback_mode=${WOOW_RESTORE_ROLLBACK:-false}
 
 stage_parent=$(mktemp -d "${TMPDIR:-/tmp}/$APP-restore.XXXXXX")
 destructive=0 pre_restore='' stage=''
+# run as a ql_cleanup hook, not from `trap ... EXIT`: a bare trap would replace the handler
+# ql_lock armed, so the lock directory would outlive a clean restore. Inside a hook $? is the
+# status the script is ending with, which is what decides whether to roll back.
 cleanup() {
   local status=$?
-  trap - EXIT
-  set +e
   if ((status != 0)) && ((destructive)) && [[ $rollback_mode == false && -n $pre_restore ]]; then
     ql_warn "restore failed after the first destructive step; putting the pre-restore archive back"
     if WOOW_RESTORE_ROLLBACK=true "$REPO/scripts/restore.sh" --archive "$pre_restore" \
@@ -60,9 +61,8 @@ cleanup() {
     fi
   fi
   rm -rf -- "$stage_parent"
-  exit "$status"
 }
-trap cleanup EXIT
+ql_cleanup restore_rollback cleanup
 
 # Freeze the caller's pathname into a private copy, then work only from that one file.
 staged=$stage_parent/source.tar

@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "fixture-container-id",
+    "Config": {
+      "Healthcheck": {
+        "Test": ["CMD", "/ko-app/headscale", "health"],
+        "Interval": 10000000000,
+        "Timeout": 5000000000,
+        "Retries": 12
+      }
+    }
+  }
+]

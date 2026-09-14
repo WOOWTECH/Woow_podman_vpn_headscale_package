@@ -1,0 +1,14 @@
+[
+  {
+    "NetworkSettings": {
+      "Ports": {
+        "8080/tcp": [
+          {
+            "HostIp": "",
+            "HostPort": "28080"
+          }
+        ]
+      }
+    }
+  }
+]

@@ -20,5 +20,8 @@ jobs:
       - name: Credentials, the leaked-value gate, compose removal (D1), READMEs, image pins
         run: tests/lint-repo.sh
 
+      - name: What the linter looks at, and what it deliberately does not
+        run: tests/lint-scope.sh
+
       - name: The API key validator compiles and its rules hold
         run: python3 tests/test-validate-api-key.py

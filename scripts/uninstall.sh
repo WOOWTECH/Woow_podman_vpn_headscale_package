@@ -33,7 +33,7 @@ while (($#)); do
   shift
 done
 ql_require_rootless
-app_lock
+ql_lock "$APP"
 
 if ((!purge)); then
   ql_uninstall_units "$APP"

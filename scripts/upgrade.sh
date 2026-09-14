@@ -35,7 +35,7 @@ while (($#)); do
 done
 ql_preflight "$PODMAN_MIN"
 [[ -f $ENV_FILE ]] || ql_die "$ENV_FILE does not exist: run scripts/install.sh first"
-app_lock
+ql_lock "$APP"
 
 snap=$(app_new_backup_dir upgrade)
 data=''

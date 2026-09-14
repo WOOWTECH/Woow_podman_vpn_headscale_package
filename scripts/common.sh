@@ -34,13 +34,6 @@ export QL_APP=$APP
 
 app_state_dir() { printf '%s/%s' "${QL_STATE_ROOT:-$HOME/.local/state/woow-quadlet}" "$APP"; }
 
-# app_lock: take the per-app lock. A script started by upgrade.sh runs under its parent's lock.
-app_lock() {
-  [[ ${WOOW_LOCK_HELD:-} == "$APP" ]] && return 0
-  ql_lock "$APP"
-  export WOOW_LOCK_HELD=$APP
-}
-
 # app_env_keys <file>: the KEY names a KEY=VALUE file defines
 app_env_keys() { sed -nE 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1/p' "$1"; }
 

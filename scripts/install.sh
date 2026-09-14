@@ -53,7 +53,8 @@ done
 dry() { [[ ${QL_DRY_RUN:-0} == 1 ]]; }
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/$APP-install.XXXXXX")
-trap 'rm -rf "$WORK"' EXIT
+# a hook, not `trap ... EXIT`, which would replace the handler ql_lock arms
+ql_cleanup work rm -rf "$WORK"
 
 # ensure_image: build localhost/woow-headscale from ./Containerfile. The build context holds
 # the Containerfile and nothing else, so no file of this checkout can end up in an image layer
@@ -88,7 +89,7 @@ fi
 # ---- 1. host preflight --------------------------------------------------------------------------
 ql_preflight "$PODMAN_MIN"
 ql_enable_linger
-app_lock
+ql_lock "$APP"
 
 # ---- 2. per-host settings -------------------------------------------------------------------
 ql_env_ensure "$ENV_EXAMPLE" "$ENV_FILE"
