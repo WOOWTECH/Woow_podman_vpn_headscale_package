@@ -180,13 +180,22 @@ ql_wait_http "$(hs_url HEADPLANE /admin)" '200|30[12378]' 180 \
 if ((no_smoke == 0)); then
   "$REPO/tests/smoke.sh" || ql_die "tests/smoke.sh failed; see the FAIL lines above"
 fi
+# `preauthkeys create --user` takes the user's numeric id, not its name, so print the real one
+# rather than a command that cannot run. Fall back to the lookup if the list cannot be read.
+enrol_user=$(hs_user_id default 2>/dev/null) || enrol_user=''
+if [[ -n $enrol_user ]]; then
+  enrol_hint="podman exec headscale headscale preauthkeys create --user $enrol_user --reusable --expiration 24h"
+else
+  enrol_hint="podman exec headscale headscale users list   # then: preauthkeys create --user <ID> --reusable --expiration 24h"
+fi
 cat >&2 <<EOF
 $APP is installed and healthy.
   Headscale     $(hs_url HEADSCALE)/   (server_url for clients: $(ql_env_get HEADSCALE_SERVER_URL))
   Headplane     $(hs_url HEADPLANE)/admin
   Metrics       $(hs_url HEADSCALE_METRICS)/metrics
-  Enrol a node  podman exec headscale headscale preauthkeys create --user default --reusable --expiration 24h
+  Enrol a node  $enrol_hint
                 then on the client: tailscale up --login-server $(ql_env_get HEADSCALE_SERVER_URL) --authkey <key>
+                in the official tailscale container that flag goes in TS_EXTRA_ARGS, not TS_LOGIN_SERVER
   Settings      $ENV_FILE (edit, then run scripts/install.sh again)
   Backup        scripts/backup.sh    Upgrade  git pull && scripts/upgrade.sh
 EOF

@@ -52,6 +52,40 @@ raise SystemExit(0 if any(isinstance(u, dict) and u.get("name") == want for u in
 ' "$1"
 }
 
+# hs_user_id <name>: that user's NUMERIC id on stdout, empty and status 1 when it is not there,
+# status 2 when the list cannot be read.
+#
+# headscale 0.29's `preauthkeys create -u/--user` takes a `uint` - a user ID, not a name. Passing
+# the name fails with `invalid argument "default" for "-u, --user" flag: strconv.ParseUint`, so
+# every instruction that spells a name there is a command nobody can run. The id is not always 1
+# either: it is whatever headscale assigned, so it has to be looked up rather than assumed.
+hs_user_id() {
+  local json
+  json=$(hs_cli users list --output json 2>/dev/null) || return 2
+  printf '%s' "$json" | python3 -c '
+import json, sys
+try:
+    value = json.load(sys.stdin)
+except ValueError:
+    raise SystemExit(2)
+if value is None:
+    value = []
+elif isinstance(value, dict):
+    value = value.get("users", value.get("items", []))
+if not isinstance(value, list):
+    raise SystemExit(2)
+want = sys.argv[1]
+for u in value:
+    if isinstance(u, dict) and u.get("name") == want:
+        uid = u.get("id")
+        if uid is None:
+            raise SystemExit(2)
+        print(uid)
+        raise SystemExit(0)
+raise SystemExit(1)
+' "$1"
+}
+
 # hs_ensure_default_user: create the headscale user "default" when the env file asks for it.
 # The autoApprovers in config/templates/headscale/policy.json name this user.
 hs_ensure_default_user() {

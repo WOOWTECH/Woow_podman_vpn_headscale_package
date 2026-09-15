@@ -81,10 +81,19 @@ scripts/install.sh                 # 建置、安裝、啟動、煙霧測試
 ### 加入節點
 
 ```bash
-podman exec headscale headscale preauthkeys create --user default --reusable --expiration 24h
+# `--user` 要的是使用者的「數字 ID」而不是名稱，先查出來；而且不一定是 1。
+podman exec headscale headscale users list
+podman exec headscale headscale preauthkeys create --user <ID> --reusable --expiration 24h
 # 在客戶端：
 tailscale up --login-server "$HEADSCALE_SERVER_URL" --authkey <key>
 ```
+
+`scripts/install.sh` 會直接把真正的 ID 填好印出來。
+
+若使用**官方** `tailscale/tailscale` 映像，登入伺服器要透過
+`TS_EXTRA_ARGS=--login-server=<url>` 設定；該映像沒有 `TS_LOGIN_SERVER` 這個變數，設了會被忽略，
+客戶端會改去連 `controlplane.tailscale.com`，Headscale 的金鑰在那裡會被判為
+「invalid key: unable to validate API key」。（`TS_LOGIN_SERVER` 是 WOOWTECH 自家映像的變數。）
 
 ### 對外連線
 

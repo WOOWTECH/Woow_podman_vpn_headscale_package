@@ -148,6 +148,21 @@ runtime_paths=(
 for s in "${runtime_paths[@]}"; do
   if git ls-files --error-unmatch "$s" >/dev/null 2>&1; then fail "$s is tracked; it must stay untracked/runtime-only"; fi
 done
+# `preauthkeys create -u/--user` takes a uint (a user ID). Spelling a NAME there is a command
+# nobody can run: headscale 0.29.3 answers
+#   invalid argument "default" for "-u, --user" flag: strconv.ParseUint: parsing "default"
+# It shipped that way in install.sh's closing hint and in both READMEs, so every instruction this
+# repo gave for enrolling a node failed on the first command. Documentation is not covered by any
+# other test here, which is exactly why it went unnoticed.
+bad_user=$(grep -rnE 'preauthkeys +create[^|]*--user +[^0-9<$]' \
+  --include='*.sh' --include='*.md' . 2>/dev/null | grep -v '^\./archive/' || true)
+if [[ -n $bad_user ]]; then
+  fail "preauthkeys --user must take a numeric ID, a <ID> placeholder or a variable - not a name:"
+  where <<<"$bad_user"
+else
+  ok "no preauthkeys --user takes a user name"
+fi
+
 ok "Headscale checks done"
 
 ((fails == 0)) && echo "lint-repo: all checks passed" || echo "lint-repo: $fails check(s) failed"

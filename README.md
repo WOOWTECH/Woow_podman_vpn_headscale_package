@@ -88,10 +88,19 @@ those rejections in CI.
 ### Enrolling a node
 
 ```bash
-podman exec headscale headscale preauthkeys create --user default --reusable --expiration 24h
+# `--user` takes the user's NUMERIC id, not its name - look it up first. It is not always 1.
+podman exec headscale headscale users list
+podman exec headscale headscale preauthkeys create --user <ID> --reusable --expiration 24h
 # on the client:
 tailscale up --login-server "$HEADSCALE_SERVER_URL" --authkey <key>
 ```
+
+`scripts/install.sh` prints this command with the real id already filled in.
+
+In the **official** `tailscale/tailscale` container the login server is set through
+`TS_EXTRA_ARGS=--login-server=<url>`; that image has no `TS_LOGIN_SERVER` variable and silently
+registers against `controlplane.tailscale.com` instead, where a Headscale key is rejected as
+"invalid key: unable to validate API key". (`TS_LOGIN_SERVER` is a WOOWTECH image variable.)
 
 ### External access
 
