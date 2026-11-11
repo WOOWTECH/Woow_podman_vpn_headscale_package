@@ -40,6 +40,7 @@ done
 archive=$(realpath -- "$archive")
 [[ -f $archive ]] || ql_die "archive not found: $archive"
 ql_require_rootless
+ql_require_user_systemd
 ql_lock "$APP"
 rollback_mode=${WOOW_RESTORE_ROLLBACK:-false}
 

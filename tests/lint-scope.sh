@@ -26,8 +26,8 @@
 # D1 is about this repository's own compose deployment, not about the word "compose" anywhere.
 #
 # Each case runs lint-repo.sh in a throwaway copy of this checkout with one planted file, so the
-# working tree is never touched. The copy is `cp -a`, not `git clone`: lint-repo.sh reads the
-# working tree, so a clone would test the last commit rather than the tree under test.
+# working tree is never touched. Copy the working tree rather than cloning the last commit, but
+# create a separate Git index: a linked worktree's .git file points back to the source index.
 # Nothing is started, installed or networked.
 set -uo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
@@ -61,7 +61,12 @@ cred_line() { printf 'HEADPLANE_%s=%s\n' 'SECRET' 'sUperV4lue1234'; }
 case_() {
   local name=$1 expect=$2 path=$3 body=$4 marker=${5:-} work out rc
   work=$ROOT/$name
-  cp -a -- "$REPO" "$work" || { echo "lint-scope: could not copy $REPO"; exit 1; }
+  mkdir -p "$work"
+  (cd "$REPO" && tar --exclude='./.git' -cf - .) | (cd "$work" && tar -xf -) \
+    || { echo "lint-scope: could not copy $REPO"; exit 1; }
+  git -C "$work" init -q || { echo "lint-scope: could not initialize the test index"; exit 1; }
+  git -C "$REPO" ls-files -z | git -C "$work" add -f --pathspec-from-file=- --pathspec-file-nul \
+    || { echo "lint-scope: could not stage the test baseline"; exit 1; }
   if [[ -n $path ]]; then
     mkdir -p -- "$work/$(dirname -- "$path")"
     "$body" >"$work/$path"

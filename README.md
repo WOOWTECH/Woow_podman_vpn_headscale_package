@@ -121,9 +121,13 @@ An optional ngrok Quadlet can expose only the control protocol through the entra
 path filter. It requires a reserved domain: set `HEADSCALE_NGROK_ENABLED=true`,
 `HEADSCALE_NGROK_DOMAIN=<domain>` and `HEADSCALE_SERVER_URL=https://<domain>` together. Create the
 token without putting it on a command line: run `scripts/set-ngrok-token.sh` and type the token on
-stdin, then run `scripts/install.sh`. A dynamically assigned free URL is not supported because it
-would invalidate the persistent `server_url` after a restart. The token is never written to a
-rendered unit or settings file. The default is off.
+stdin, then run `scripts/install.sh`. ngrok's assigned dev domain is stable across agent restarts;
+it can be used here if it is not already serving another endpoint. The installer requires its
+hostname explicitly so Headscale's persistent `server_url` and the tunnel agree. An ngrok platform
+API key cannot be passed to `set-ngrok-token.sh`: first use the ngrok API to create an agent
+authtoken, then store that token. The token is never written to a rendered unit or settings file.
+The default is off. The tested Podman endpoint and results are in
+[`docs/ALIGNMENT-2026-11-11.md`](docs/ALIGNMENT-2026-11-11.md).
 
 ## Secrets
 
@@ -293,7 +297,7 @@ scripts/install.sh upgrade.sh uninstall.sh backup.sh restore.sh
 scripts/common.sh headscale-helpers.sh render-args.sh validate-api-key.py
 scripts/lib/quadlet-lib.sh          vendored shared library (decision D8) - never edit here
 tests/dryrun.sh dryrun.local.sh     the real Quadlet generator + systemd-analyze, in CI
-tests/smoke.sh lint-repo.sh test-validate-api-key.py
+tests/smoke.sh lint-repo.sh test-validate-api-key.py real-client.py real-peers.py
 docs/EXTERNAL-ACCESS.md             how to expose the control plane without breaking TS2021
 ```
 

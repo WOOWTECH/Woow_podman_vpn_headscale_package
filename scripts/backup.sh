@@ -34,6 +34,7 @@ while (($#)); do
   shift
 done
 ql_require_rootless
+ql_require_user_systemd
 ql_lock "$APP"
 
 was_running=()

@@ -51,20 +51,24 @@ Internet ──443──> Router ──443──> K3s node (Traefik LB) ──> 
 ## Option B — ngrok (Fast Bootstrap, verified)
 
 ```bash
-ngrok config add-authtoken <token>
+ngrok config add-authtoken <agent-authtoken>
 ngrok http <headscale-clusterip>:8080
-# → https://random-name.ngrok-free.app  (valid TLS, protocol passes through)
+# → https://<your-assigned-dev-domain>  (valid TLS, protocol passes through)
 ```
 
 Client:
 
 ```bash
-tailscale up --login-server=https://random-name.ngrok-free.app --authkey=<key>
+tailscale up --login-server=https://<your-assigned-dev-domain> --authkey=<key>
 ```
 
-Free-tier caveats: URL changes each restart, 1 GB/month bandwidth, interstitial page on browser traffic (does not affect the Tailscale client).
+The account's assigned dev domain is stable across restarts. Free-tier limits include 1 GB/month
+data transfer and a browser interstitial (which does not affect the Tailscale client). An API key
+manages ngrok resources but does not authenticate the agent; create an agent authtoken separately.
 
-For a stable URL: ngrok paid plan with a reserved domain, or move to Option A.
+For a dedicated hostname when the dev domain is already in use, reserve another domain on a
+qualifying plan or move to Option A. The Podman deployment used its own reserved domain and
+passed live HTTPS registration and two-peer TSMP tests on 2026-11-11.
 
 ## Option C — Raw TCP tunnels (Pinggy / bore / ngrok tcp)
 
