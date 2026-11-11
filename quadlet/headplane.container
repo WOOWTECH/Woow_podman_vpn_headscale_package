@@ -20,7 +20,8 @@ After=headscale.service
 
 [Container]
 ContainerName=headplane
-Image=ghcr.io/tale/headplane:0.7.1@sha256:394483fd2336ce6b15df360c3e118ddfd45eb8140fe21df9f2611077f5d79d22
+Image=localhost/woow-headplane:0.7.1-ssr1
+Pull=never
 Network=headscale.network
 HostName=headplane
 # Only the entrance on headscale-net can reach this port. Never publish Headplane directly:

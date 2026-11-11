@@ -33,6 +33,7 @@ REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 . "$REPO/scripts/headscale-helpers.sh"
 
 sets=() build=auto build_only=0 rotate=0 accept=0 no_start=0 no_smoke=0
+HEADSCALE_IMAGE_CHANGED=0 HEADPLANE_IMAGE_CHANGED=0
 while (($#)); do
   case $1 in
     --set) (($# >= 2)) || ql_die "--set needs KEY=VALUE"; sets+=("$2"); shift ;;
@@ -75,6 +76,21 @@ ensure_image() {
   install -m 644 "$REPO/Containerfile" "$WORK/build-context/Containerfile"
   podman build -t "$HEADSCALE_IMAGE" -f "$WORK/build-context/Containerfile" "$WORK/build-context" \
     || ql_die "building $HEADSCALE_IMAGE failed; nothing was changed"
+  HEADSCALE_IMAGE_CHANGED=1
+}
+
+ensure_headplane_image() {
+  if podman image exists "$HEADPLANE_IMAGE"; then
+    if [[ $build != always ]]; then return 0; fi
+  elif [[ $build == never ]]; then
+    ql_die "$HEADPLANE_IMAGE does not exist and --no-build was given (run scripts/build-headplane.sh)"
+  fi
+  if dry; then
+    ql_info "[dry-run] would build $HEADPLANE_IMAGE from pinned Headplane 0.7.1 source"
+    return 0
+  fi
+  "$REPO/scripts/build-headplane.sh" "$HEADPLANE_IMAGE"
+  HEADPLANE_IMAGE_CHANGED=1
 }
 
 # ---- --build-only: the image and nothing else ---------------------------------------------------
@@ -82,6 +98,7 @@ if ((build_only)); then
   ql_require_rootless
   ql_require_podman_min "$PODMAN_MIN"
   ensure_image
+  ensure_headplane_image
   ql_info "image ready: $HEADSCALE_IMAGE"
   exit 0
 fi
@@ -134,8 +151,9 @@ done
 
 # ---- 5. images before any unit change -----------------------------------------------------------
 ensure_image
-if dry && ! podman image exists "$HEADSCALE_IMAGE"; then
-  ql_info "[dry-run] $HEADSCALE_IMAGE is not built yet; skipping the pull of the other image"
+ensure_headplane_image
+if dry && { ! podman image exists "$HEADSCALE_IMAGE" || ! podman image exists "$HEADPLANE_IMAGE"; }; then
+  ql_info "[dry-run] a local image is not built yet; skipping pulls"
 else
   ql_pull_images "$WORK/out"
 fi
@@ -178,6 +196,8 @@ if dry; then
   exit 0
 fi
 ((${#cfg_units[@]} == 0)) || ql_mark_changed "$APP" "${cfg_units[@]}"
+((HEADSCALE_IMAGE_CHANGED == 0)) || ql_mark_changed "$APP" headscale.service
+((HEADPLANE_IMAGE_CHANGED == 0)) || ql_mark_changed "$APP" headplane.service
 ((restart_headplane == 0)) || ql_mark_changed "$APP" headplane.service
 ((restart_entrance == 0)) || ql_mark_changed "$APP" headscale-entrance.service
 if ((no_start)); then

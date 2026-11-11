@@ -1,0 +1,44 @@
+name: external-peer-uat
+
+on:
+  pull_request:
+    paths: [.github/workflows/external-peer-uat.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external-peer:
+    runs-on: ubuntu-24.04
+    env:
+      HEADSCALE_UAT_AUTHKEY: ${{ secrets.HEADSCALE_UAT_AUTHKEY }}
+      HEADSCALE_UAT_LOCAL_IP: ${{ vars.HEADSCALE_UAT_LOCAL_IP }}
+    steps:
+      - name: Check whether a short-lived external test is armed
+        id: gate
+        shell: bash
+        run: |
+          if [[ -n "$HEADSCALE_UAT_AUTHKEY" && -n "$HEADSCALE_UAT_LOCAL_IP" ]]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo 'Temporary auth key and local peer are absent; skipping external UAT.'
+          fi
+
+      - name: Enrol GitHub-hosted runner with Headscale
+        if: steps.gate.outputs.ready == 'true'
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+        with:
+          authkey: ${{ secrets.HEADSCALE_UAT_AUTHKEY }}
+          args: --login-server=https://woow-hs-podman-46.ngrok.app --accept-dns=false
+          version: 1.104.5
+          hostname: headscale-gh-${{ github.run_id }}
+
+      - name: Verify remote peer and actual data path
+        if: steps.gate.outputs.ready == 'true'
+        shell: bash
+        run: |
+          tailscale status --json | jq -e '.BackendState == "Running"'
+          tailscale ping --tsmp --c=2 --until-direct=false --timeout=5s "$HEADSCALE_UAT_LOCAL_IP"
+          tailscale ping --c=3 --until-direct=false --timeout=5s "$HEADSCALE_UAT_LOCAL_IP"

@@ -108,7 +108,12 @@ unit_hs=$(sed -n 's/^Image=//p' quadlet/headscale.container)
 unit_hp=$(sed -n 's/^Image=//p' quadlet/headplane.container)
 grep -qxF "HEADSCALE_IMAGE=$unit_hs" scripts/common.sh || fail "scripts/common.sh HEADSCALE_IMAGE differs from quadlet/headscale.container"
 grep -qxF "HEADPLANE_IMAGE=$unit_hp" scripts/common.sh || fail "scripts/common.sh HEADPLANE_IMAGE differs from quadlet/headplane.container"
-[[ $unit_hp == *@sha256:* ]] || fail "the headplane image is not pinned by digest: $unit_hp"
+[[ $unit_hp == localhost/* ]] || fail "the patched Headplane image must be built locally: $unit_hp"
+grep -qx 'Pull=never' quadlet/headplane.container || fail "the local Headplane image needs Pull=never"
+grep -qE '^FROM ghcr.io/tale/headplane:0\.7\.1@sha256:[0-9a-f]{64}$' Containerfile.headplane \
+  || fail "the Headplane build base must be pinned by digest"
+grep -qE '^SOURCE_COMMIT=[0-9a-f]{40}$' scripts/build-headplane.sh \
+  || fail "the Headplane source commit must be pinned"
 [[ $unit_hs == localhost/* ]] || fail "the headscale image is expected to be the locally built one: $unit_hs"
 grep -qx 'Pull=never' quadlet/headscale.container || fail "the localhost/ image needs Pull=never"
 # The Containerfile's upstream source must be the one scripts/common.sh records, digest and all.
