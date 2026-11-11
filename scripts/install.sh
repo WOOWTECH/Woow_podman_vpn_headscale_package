@@ -33,6 +33,7 @@ REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 . "$REPO/scripts/headscale-helpers.sh"
 
 sets=() build=auto build_only=0 rotate=0 accept=0 no_start=0 no_smoke=0
+HEADSCALE_IMAGE_CHANGED=0 HEADPLANE_IMAGE_CHANGED=0
 while (($#)); do
   case $1 in
     --set) (($# >= 2)) || ql_die "--set needs KEY=VALUE"; sets+=("$2"); shift ;;
@@ -75,6 +76,7 @@ ensure_image() {
   install -m 644 "$REPO/Containerfile" "$WORK/build-context/Containerfile"
   podman build -t "$HEADSCALE_IMAGE" -f "$WORK/build-context/Containerfile" "$WORK/build-context" \
     || ql_die "building $HEADSCALE_IMAGE failed; nothing was changed"
+  HEADSCALE_IMAGE_CHANGED=1
 }
 
 ensure_headplane_image() {
@@ -88,6 +90,7 @@ ensure_headplane_image() {
     return 0
   fi
   "$REPO/scripts/build-headplane.sh" "$HEADPLANE_IMAGE"
+  HEADPLANE_IMAGE_CHANGED=1
 }
 
 # ---- --build-only: the image and nothing else ---------------------------------------------------
@@ -150,7 +153,7 @@ done
 ensure_image
 ensure_headplane_image
 if dry && { ! podman image exists "$HEADSCALE_IMAGE" || ! podman image exists "$HEADPLANE_IMAGE"; }; then
-  ql_info "[dry-run] $HEADSCALE_IMAGE is not built yet; skipping the pull of the other image"
+  ql_info "[dry-run] a local image is not built yet; skipping pulls"
 else
   ql_pull_images "$WORK/out"
 fi
@@ -193,6 +196,8 @@ if dry; then
   exit 0
 fi
 ((${#cfg_units[@]} == 0)) || ql_mark_changed "$APP" "${cfg_units[@]}"
+((HEADSCALE_IMAGE_CHANGED == 0)) || ql_mark_changed "$APP" headscale.service
+((HEADPLANE_IMAGE_CHANGED == 0)) || ql_mark_changed "$APP" headplane.service
 ((restart_headplane == 0)) || ql_mark_changed "$APP" headplane.service
 ((restart_entrance == 0)) || ql_mark_changed "$APP" headscale-entrance.service
 if ((no_start)); then

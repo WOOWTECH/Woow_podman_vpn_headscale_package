@@ -45,7 +45,7 @@ two units rather than one so that:
 ## Requirements
 
 * Ubuntu 24.04 (or anything with **podman ≥ 4.9** and systemd 255), rootless, with linger
-* `git`, `curl`, `python3`, and outbound network access on the first install (it builds an image)
+* `git`, `curl`, `python3`, and outbound network access on the first install (it builds Headscale and the patched Headplane UI)
 * No root anywhere: run every script as the account that will own the containers, never with `sudo`
 
 ## Install
@@ -62,6 +62,11 @@ The first run creates `~/.config/headscale/headscale.env` (mode 0600) from
 `config/headscale.env.example` and stops so the settings can be reviewed. `--accept-defaults`
 skips that pause. `scripts/install.sh` is idempotent: a re-run with nothing changed builds nothing,
 restarts nothing and keeps generated secrets.
+
+The Headplane build uses `scripts/build-headplane.sh`: it checks the upstream
+v0.7.1 commit, applies the small ACL SSR patch, builds the UI with a digest-pinned
+Node 24 image, and layers that UI over the digest-pinned upstream Headplane image.
+`--no-build` requires both local images to exist already.
 
 Useful flags: `--set KEY=VALUE` (store a setting first), `--dry-run` (render, validate and report
 without touching anything), `--rebuild`, `--no-build`, `--build-only`, `--rotate-api-key`,
@@ -86,7 +91,7 @@ renders it into the unit files and into both containers' configuration at instal
 | `HEADSCALE_CREATE_DEFAULT_USER` | create the headscale user `default` on the first install |
 | `HEADPLANE_COOKIE_SECURE` | `true` only when something in front of Headplane terminates TLS |
 | `HEADSCALE_MAGIC_DNS`, `HEADSCALE_DNS_NAMESERVERS`, `HEADSCALE_NODE_EXPIRY`, `HEADSCALE_POLICY_MODE` | PaaS-aligned DNS, node expiration and editable database policy |
-| `HEADSCALE_NGROK_ENABLED`, `HEADSCALE_NGROK_DOMAIN` | optional reserved ngrok HTTPS domain; the token lives in a Podman secret |
+| `HEADSCALE_NGROK_ENABLED`, `HEADSCALE_NGROK_MODE`, `HEADSCALE_NGROK_DOMAIN` | optional fixed/dev ngrok HTTPS or short-lived TCP test mode; the token lives in a Podman secret |
 
 Every value is validated by `scripts/render-args.sh` **before a file is written** — a bad bind
 address, a port collision, a `server_url` with a path or credentials, or a base domain that would

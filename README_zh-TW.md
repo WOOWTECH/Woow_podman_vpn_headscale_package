@@ -58,6 +58,9 @@ scripts/install.sh                 # 建置、安裝、啟動、煙霧測試
 0600）並停下來讓你檢查設定；加 `--accept-defaults` 可略過。`scripts/install.sh` 具備冪等性：內容
 沒變的重跑不會建置、不會重啟，也會保留產生的 secret。
 
+Headplane 的本機映像由 `scripts/build-headplane.sh` 從固定的官方 0.7.1 提交建置 UI，套用
+ACL 頁的 SSR 修補，再疊到 digest 釘選的官方映像。`--no-build` 需要兩個本機映像都已存在。
+
 常用旗標：`--set KEY=VALUE`、`--dry-run`（只渲染、驗證並報告，不動任何東西）、`--rebuild`、
 `--no-build`、`--build-only`、`--rotate-api-key`、`--no-start`、`--no-smoke`。
 
