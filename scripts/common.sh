@@ -27,7 +27,7 @@ ENV_CREDENTIAL_ALLOW=''
 # images. tests/lint-repo.sh checks these against quadlet/ and Containerfile.
 HEADSCALE_IMAGE=localhost/woow-headscale:0.29.4-r1
 HEADSCALE_SOURCE_IMAGE=ghcr.io/juanfont/headscale:v0.29.4@sha256:8833f828b414c0907b7e5c71da76473216fe17cce0818a166b536ec552c0903f
-HEADPLANE_IMAGE=localhost/woow-headplane:0.7.1-ssr1
+HEADPLANE_IMAGE=localhost/woow-headplane:0.7.1-woow2
 ENTRANCE_IMAGE=docker.io/nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
 NGROK_IMAGE=docker.io/ngrok/ngrok:3.39.11-alpine@sha256:4147f33ead67712d642fde29af4a9e258d7a937ef97be146397b7e2a2e8e8dd1
 # the compose-era user units (see the compose-final tag). None of them may be active when the

@@ -18,7 +18,7 @@ English: [README.md](README.md)
 | Unit | 容器 | 映像 | 預設發布位址 |
 |---|---|---|---|
 | `headscale.service` | `headscale` | `localhost/woow-headscale:0.29.4-r1`（本機建置） | `127.0.0.1:28080` → 8080、`127.0.0.1:29090` → 9090 |
-| `headplane.service` | `headplane` | `localhost/woow-headplane:0.7.1-ssr1`（官方 0.7.1 加 ACL SSR 修補） | 僅 Podman 私有網路 |
+| `headplane.service` | `headplane` | `localhost/woow-headplane:0.7.1-woow2`（官方 0.7.1 加 ACL SSR、DNS 記錄及 proxy-auth 修補） | 僅 Podman 私有網路 |
 | `headscale-entrance.service` | `headscale-entrance` | `nginxinc/nginx-unprivileged:1.27-alpine`（digest 釘選） | `127.0.0.1:23000` → 3000 |
 | `headscale-ngrok.service`（選用） | `headscale-ngrok` | `ngrok/ngrok:3.39.11-alpine`（digest 釘選） | 不發布主機埠；外部 HTTPS 或測試用 TCP tunnel |
 | `headscale-network.service` | – | – | podman 網路 `headscale-net` |
@@ -59,7 +59,7 @@ scripts/install.sh                 # 建置、安裝、啟動、煙霧測試
 沒變的重跑不會建置、不會重啟，也會保留產生的 secret。
 
 Headplane 的本機映像由 `scripts/build-headplane.sh` 從固定的官方 0.7.1 提交建置 UI，套用
-ACL 頁的 SSR 修補，再疊到 digest 釘選的官方映像。`--no-build` 需要兩個本機映像都已存在。
+ACL 頁 SSR 與 WOOWTECH/headplane b2780eb 的 DNS 記錄、proxy-auth 修補，再疊到 digest 釘選的官方映像。`--no-build` 需要兩個本機映像都已存在。
 
 常用旗標：`--set KEY=VALUE`、`--dry-run`（只渲染、驗證並報告，不動任何東西）、`--rebuild`、
 `--no-build`、`--build-only`、`--rotate-api-key`、`--no-start`、`--no-smoke`。

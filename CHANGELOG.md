@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-12 — Headplane DNS records and proxy-auth parity
+
+- Apply the WOOWTECH/headplane `b2780eb` source changes on top of the pinned 0.7.1 ACL SSR build. DNS extra records remain editable with the main Headscale config mounted read-only; proxy-auth admins go directly to Machines instead of the account-link picker.
+- Use the new `localhost/woow-headplane:0.7.1-woow2` image while retaining the previous image for rollback. Verify the upstream fix's 10 unit cases as a non-root user, isolated add/remove behavior, and the live protected entrance.
+- Recheck current PaaS Gitea main, its deployed image and HA add-on source in the [alignment report](docs/ALIGNMENT-2026-11-11.md).
+
 ## 2026-11-11 — Headplane ACL SSR fix
 
 - Rebuild the pinned Headplane 0.7.1 UI with a client hydration guard for the ACL CodeMirror editor. The upstream `.client` module resolves to an undefined server component after the first SSR request, making subsequent direct ACL requests return HTTP 500. The local build retains the upstream base image and only replaces the UI bundle.
