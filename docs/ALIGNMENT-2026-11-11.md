@@ -1,10 +1,10 @@
 # Headscale Podman 與 HA add-on／PaaS 對照及實測
 
-更新：2026-11-11（Asia/Taipei）
+更新：2026-11-12（Asia/Taipei）
 
 ## 對照來源
 
-- HA add-on：[`WOOWTECH/Woow_ha_vpn_headscale_package`](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package)，main `43c2adf653b610d7d7005ed1d5d1bdb4b83cb2c1`，add-on 0.1.3 已發布並同步至 WOOW App Store。以 `headscale/config.yaml`、容器設定模板與服務啟動腳本為準；`192.168.2.121` 的正式實體仍在運行 0.1.2，尚未更新。
+- HA add-on：[`WOOWTECH/Woow_ha_vpn_headscale_package`](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package)，main `43c2adf653b610d7d7005ed1d5d1bdb4b83cb2c1`，add-on 0.1.3 已發布並同步至 WOOW App Store。以 `headscale/config.yaml`、容器設定模板與服務啟動腳本為準；`192.168.2.121` 的正式實體已更新到 0.1.3。
 - PaaS：Gitea `woow-paas-charts/charts/headscale`，main `573e6c471c8f4d2e84bdc80ba959c98f4aed5f08`，chart 0.1.8。透過 cluster1 的 kubeconfig 與 Gitea service 讀取並封存當前 main；以 `values.yaml`、`templates/configmap.yaml`、`templates/entrance-configmap.yaml`、`templates/statefulset.yaml` 為準。
 - Podman：`WOOWTECH/Woow_podman_vpn_headscale_package`；PR #9、#10 均已合併，後者 merge commit `d500fb5089cbd4e6c6a58033a432d19a71e097de`。主機 `woowtechopenclaw` 的 rootless Podman 4.9.3、`systemd --user`。PaaS 仍以當時封存的 `573e6c4` 對照，直接讀 Gitea main 得到 Cloudflare Access 302，未重新取得現行內容。
 
@@ -50,17 +50,23 @@ HA ingress、Kubernetes StatefulSet／PVC、NetworkPolicy、tenant operator 和 
 
 1. ACL 500 已用 `tests/headplane-acl-ssr.py` 穩定重現：原始映像 5/5 回 500。直接繞過 nginx 從私有 Podman 網路請求也回 500；DNS 頁仍回 200。錯誤為 React SSR 的 `Element type is invalid ... undefined`。原始碼中 ACL 頁直接對 `.client` CodeMirror 元件做 `React.lazy()`；首次 SSR 後快取到伺服器端不存在的元件。`patches/headplane-acl-ssr.patch` 讓編輯器在瀏覽器 hydration 完成後才載入。釘選官方 v0.7.1 原始提交與官方基底映像，透過 `scripts/build-headplane.sh` 可重建。隔離容器連續 10 次直接請求 200；瀏覽器重載 3 次均載入 CodeMirror。正式部署前做無警告冷備份，切換後 `tests/smoke.sh` **30 passed、0 failed**，其中 ACL 連續 5 次 200。另用正式建置腳本重建測試映像並連續 5 次直接請求 200。
 2. [GitHub 外部節點驗收](https://github.com/WOOWTECH/Woow_podman_vpn_headscale_package/actions/runs/43045428172)：GitHub 託管 runner 從區網外經固定 HTTPS ngrok 網域加入本機 Headscale，取得 `100.64.0.2`，本機一次性節點為 `100.64.0.1`。本機 → runner 及 runner → 本機的 TSMP 都成功；runner 的一般 `tailscale ping` 回報直接路徑。工作結束後 Headscale 節點為 0、無未使用且未過期的測試 key，GitHub 暫存 secret 與 variable 均已刪除。這證實跨網路節點互通；長時間、不同 ISP 的持續性仍未驗收。
-3. HA add-on `1b7b4ce7_woow-headscale` 在 `192.168.2.121` 正運行且有 2 個節點，配置的 ngrok dev domain 正供它使用。未中斷其控制入口；等待短時中斷授權或另一帳號後，才能直接啟動 Podman 無 `--url` agent 做陽性驗收。[ngrok 官方文件](https://ngrok.com/docs/gateway/domains)說明每帳號只有一個自動分配且固定的 dev domain。PaaS 現行 Gitea main 仍被 Cloudflare Access 擋住；已請求 cluster1 kubeconfig／SSH 或 Access 授權。
+3. HA add-on `1b7b4ce7_woow-headscale` 在 `192.168.2.121` 正運行且有 2 個節點，其 ngrok dev domain 供控制入口使用。2026-11-12 經允許短暫中斷後，完成下述無 `--url` agent 陽性驗收。[ngrok 官方文件](https://ngrok.com/docs/gateway/domains)說明每帳號只有一個自動分配且固定的 dev domain。PaaS 現行 Gitea main 仍被 Cloudflare Access 擋住；已請求 cluster1 kubeconfig／SSH 或 Access 授權。
 
 ## HA add-on ACL 修補發布
 
 - HA 0.1.2 正式容器的 `/admin/acls` 連續五次回 500。相同的 hydration guard 已用於 HA 0.1.3；本機完整映像的隔離測試，在登入後連續五次取得實際 ACL 頁及 HTTP 200。
 - [HA PR #15](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package/pull/15) 已合併；amd64、aarch64 建置和 [0.1.2→0.1.3 升級驗證](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package/actions/runs/43049953982) 均通過。升級驗證保留原 API key、使用者及 pre-auth key，並經 HA Ingress 登入後對 ACL 頁連續五次確認 200。`v0.1.3` Release 與 WOOW App Store 同步完成。
-- 正式 HA 主機目前仍在 0.1.2，因其 ngrok dev domain 正承載 2 個已註冊節點；需安排短暫中斷再升級及驗收。這項發布不代表正式 HA 主機已更新。
+- 正式 HA 主機更新前建立部分備份 `546add48`，確認包含 Headscale add-on；更新到 0.1.3 後 `started`、LAN 和 ngrok 公開 `/health` 均為 200，原有 2 個節點保留。正式容器的 Headplane API key 登入得到 302，ACL 頁連續五次回 200 且含實際 ACL 內容；dev domain 驗收後重新啟動，再跑同一測試仍通過。
+
+## 2026-11-12 ngrok dev domain 真實驗收
+
+- 暫停 HA add-on 後，將其帳號授權暫存於本機 Podman secret，啟動臨時 ngrok agent；啟動參數僅有 `http headscale-entrance:8081 --log stdout --inspect=false`，沒有 `--url`。agent API 實際分配 `https://loving-woodcock-cleanly.ngrok-free.app`；公開 `/health` 為 200，私有 `/admin/` 為 404。
+- 用與正式 `scripts/ngrok-sync.py` 相同的 URL 解析與三檔同步函式，將真實分配的網址寫入隔離的 `headscale.env`、Headscale 設定和 Headplane 設定副本；三者值一致，第二次同步無變更。正式 Podman 固定網域和設定未切換。此測試證實真實 dev domain 的分配及設定同步；沒有在 dev domain 上重新註冊 Tailscale 用戶端。
+- 移除臨時 agent 和 Podman secret 後重新啟動 HA add-on：0.1.3 `started`、原有節點數仍為 2，HA 與 Podman 的公開 `/health` 均為 200，Podman 四個 Quadlet unit 均 active。
 
 ## 仍待驗收
 
-- 本機 ngrok 帳號的 dev domain 正由已有兩個節點的 HA add-on 使用；自動發現解析與寫入已對真實 agent 做隔離實測，但 Podman 無 `--url` agent 的實際分配仍待可用網域。PaaS Gitea main 也未在本輪重新讀取，對齊結論以封存的 chart 0.1.8 為限。
+- PaaS Gitea main 仍無法在本機重讀：`git ls-remote` 被 Cloudflare Access 轉址，對齊結論僅以封存的 chart 0.1.8 為限；PaaS 實際 JCR Headplane 映像及網頁功能未驗收。
 - 管理入口仍只綁 `127.0.0.1:23000`，可用 SSH tunnel。已完成 GitHub 雲端與本機的跨網路互通及強制 DERP 測試；未做長時間連線、多節點權限、真實 OIDC 或 Headplane Agent 情境。
 - DNS 主設定的網頁編輯因 Headscale 設定唯讀而禁用；PaaS chart 同樣以唯讀 ConfigMap 掛載 Headplane 設定，可由 chart 值修改。PaaS／HA 的實際網頁狀態仍需登入各自環境確認。PaaS chart 的入口限流也會計算 `/admin/assets/`，可能遇到相同 429，這是由 chart 設定推論，尚未在 PaaS 瀏覽器實測。
 
