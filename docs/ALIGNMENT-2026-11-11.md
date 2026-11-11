@@ -26,12 +26,12 @@ HA ingress、Kubernetes StatefulSet／PVC、NetworkPolicy、tenant operator 和 
 
 1. `tests/dryrun.sh`：預設、選用 unit、LAN／proxy 及固定網域 ngrok fixture，共 5 種渲染，Podman 4.9.3 Quadlet generator 與 systemd-analyze 驗證通過。
 2. `tests/lint-repo.sh`：憑證、版本與設定檔檢查通過。
-3. `tests/smoke.sh`：25 passed、0 failed；未登入及錯誤密碼均為 401，正確 Podman secret 密碼開啟 Headplane（200）；公開路徑過濾對 `/health` 為 200、對 `/swagger` 為 404；Headscale CLI 和 metrics 正常。
+3. `tests/smoke.sh`：27 passed、0 failed；未登入及錯誤密碼均為 401，正確 Podman secret 密碼開啟 Headplane（200）；公開路徑過濾對 `/health` 為 200、對 `/swagger` 為 404；Headscale CLI 和 metrics 正常。
 4. `tests/real-client.py`：使用獨立 userspace `tailscaled` 和一次性 preauth key，經 `http://192.168.2.46:28080` 註冊；BackendState `Running`，取得 `100.64.0.1`／IPv6。測試節點及 key 事後清除，主機原有 tailnet 沒有切換。
 5. 另一台 `192.168.2.121` 從區網對 Headscale `/health` 收到 200；此前 UFW 擋住，新增限定 `enp3s0`、`192.168.2.0/24` 到 `192.168.2.46:28080/tcp` 的規則後通過。
 6. `scripts/backup.sh --include-secrets` 和 `scripts/restore.sh --confirm-restore headscale --restore-secrets` 實際執行；資料卷、API key、Cookie secret、入口密碼還原後三個單元啟動，還原後快速驗收 16 passed、0 failed。
-7. 將原本十年有效期的 Headplane API key 換成一年金鑰，撤銷舊金鑰；換發後完整驗收 25 passed、0 failed，並再做一份含新金鑰的冷備份。
-8. 兩個 Headplane secret 的容器內 0400 模式尚未由執行檔直接讀出：distroless Headplane 映像沒有 `stat`；Quadlet 指定 `mode=0400` 且 Podman 掛載檔唯讀。
+7. 將原本十年有效期的 Headplane API key 換成一年金鑰，撤銷舊金鑰；換發後完整驗收通過，並再做一份含新金鑰的冷備份。
+8. 以 Headplane 映像內建的 Node.js `fs.statSync` 驗證兩個 secret 的容器內權限均為 0400。
 
 ## 尚未完成的情境
 

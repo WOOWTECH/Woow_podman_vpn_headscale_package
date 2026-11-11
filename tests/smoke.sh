@@ -146,8 +146,9 @@ unset cookie api_key entrance_password
 
 # A8 the secrets reach Headplane as 0400 files, and the configuration is read-only
 for p in /etc/headplane/cookie-secret /etc/headplane/api-key; do
-  perm=$(podman exec headplane stat -c '%a' "$p" 2>/dev/null || true)
-  if [[ $perm == 400 ]]; then pass "A8 $p is 0400 inside headplane"; else warn "A8 $p reports mode '${perm:-unknown}' (no stat in this image?)"; fi
+  perm=$(podman exec headplane /nodejs/bin/node -e \
+    'const fs=require("fs"); console.log((fs.statSync(process.argv[1]).mode & 0o777).toString(8))' "$p" 2>/dev/null || true)
+  if [[ $perm == 400 ]]; then pass "A8 $p is 0400 inside headplane"; else fail "A8 $p reports mode '${perm:-unknown}', want 0400"; fi
 done
 rw=$(podman inspect --format '{{range .Mounts}}{{if eq .Destination "/etc/headscale"}}{{.RW}}{{end}}{{end}}' headscale 2>/dev/null || true)
 if [[ $rw == false ]]; then pass "A8 /etc/headscale is mounted read-only"; else fail "A8 /etc/headscale mount RW=${rw:-missing}"; fi
