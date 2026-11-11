@@ -110,6 +110,13 @@ app_guard_containers
 # ---- 4. stage, render, validate -----------------------------------------------------------------
 mkdir -p "$WORK/src" "$WORK/out"
 cp -p "$REPO"/quadlet/*.container "$REPO"/quadlet/*.volume "$REPO"/quadlet/*.network "$WORK/src/"
+if [[ $(ql_env_get HEADSCALE_NGROK_ENABLED false) == true ]]; then
+  cp -p "$REPO/quadlet/optional/headscale-ngrok.container" "$WORK/src/"
+  if ! dry; then
+    podman secret exists "$SECRET_NGROK_TOKEN" \
+      || ql_die "ngrok is enabled but the Podman secret $SECRET_NGROK_TOKEN is missing"
+  fi
+fi
 RENDER_ARGS=()
 # shellcheck source=render-args.sh
 . "$REPO/scripts/render-args.sh"
@@ -132,14 +139,32 @@ else
   ql_pull_images "$WORK/out"
 fi
 
-# ---- 6. Headplane's cookie secret ---------------------------------------------------------------
-# 32 characters is what Headplane 0.7.0 accepts. The API key needs a running Headscale and is
+# ---- 6. private credentials ---------------------------------------------------------------------
+# 32 characters is what Headplane 0.7.1 accepts. The API key needs a running Headscale and is
 # created further down.
 ql_secret_ensure "$SECRET_COOKIE" random:32
 restart_headplane=0
 [[ ${QL_SECRET_CHANGED:-0} == 1 ]] && restart_headplane=1
+ql_secret_ensure "$SECRET_ENTRANCE_PASSWORD" random:32
+restart_entrance=0
+[[ ${QL_SECRET_CHANGED:-0} == 1 ]] && restart_entrance=1
+# The high-entropy password is a Podman secret; only a deterministic apr1 hash is
+# installed for nginx. A stable salt keeps an idempotent install from restarting it.
+mkdir -p "$WORK/out/config/entrance"
+if podman secret exists "$SECRET_ENTRANCE_PASSWORD" >/dev/null 2>&1; then
+  entrance_hash=$(app_secret_read "$SECRET_ENTRANCE_PASSWORD" | openssl passwd -apr1 -salt woowhead -stdin)
+else
+  entrance_hash='dry-run-placeholder'
+fi
+printf 'admin:%s\n' "$entrance_hash" >"$WORK/out/config/entrance/htpasswd"
+chmod 644 "$WORK/out/config/entrance/htpasswd"
+unset entrance_hash
 
 # ---- 7. install the files -----------------------------------------------------------------------
+# A disabled optional tunnel must be stopped before its unit is pruned.
+if ! dry && [[ $(ql_env_get HEADSCALE_NGROK_ENABLED false) != true ]]; then
+  systemctl --user stop headscale-ngrok.service >/dev/null 2>&1 || true
+fi
 changed=$(ql_install_files "$WORK/out" "$APP" --prune)
 [[ -z $changed ]] || ql_info "changed: $(tr '\n' ' ' <<<"$changed")"
 # A rendered config file is not a unit: Quadlet cannot see that it changed, so say so here.
@@ -147,16 +172,21 @@ mapfile -t cfg_units < <(hs_units_for_changed "$changed")
 if dry; then
   ((${#cfg_units[@]} == 0)) || ql_info "[dry-run] would restart ${cfg_units[*]} (rendered config changed)"
   ((restart_headplane == 0)) || ql_info "[dry-run] would restart headplane.service (cookie secret changed)"
+  ((restart_entrance == 0)) || ql_info "[dry-run] would restart headscale-entrance.service (password changed)"
   ql_info "dry-run complete; nothing was changed"
   exit 0
 fi
 ((${#cfg_units[@]} == 0)) || ql_mark_changed "$APP" "${cfg_units[@]}"
 ((restart_headplane == 0)) || ql_mark_changed "$APP" headplane.service
+((restart_entrance == 0)) || ql_mark_changed "$APP" headscale-entrance.service
 if ((no_start)); then
   systemctl --user daemon-reload
   ql_info "installed; not started (--no-start). Start with: systemctl --user start ${UNITS[*]}"
   exit 0
 fi
+systemctl --user daemon-reload
+hs_ensure_quadlet_resources
+hs_ensure_extra_records
 
 # ---- 8. Headscale first ---------------------------------------------------------------------------
 ql_apply_units "$APP" headscale.service
@@ -173,8 +203,12 @@ if ((rotate)); then hs_ensure_api_key --rotate; else hs_ensure_api_key; fi
 
 # ---- 10. Headplane ----------------------------------------------------------------------------
 ql_apply_units "$APP" headplane.service
-ql_wait_http "$(hs_url HEADPLANE /admin)" '200|30[12378]' 180 \
-  || ql_die "headplane does not answer on $(hs_url HEADPLANE /admin); see: journalctl --user -u headplane.service -n 100"
+ql_apply_units "$APP" headscale-entrance.service
+ql_wait_http "$(hs_url HEADPLANE /healthz-upstream)" '200' 180 \
+  || ql_die "headplane does not answer through the entrance; see: journalctl --user -u headplane.service -u headscale-entrance.service -n 100"
+if [[ $(ql_env_get HEADSCALE_NGROK_ENABLED false) == true ]]; then
+  ql_apply_units "$APP" headscale-ngrok.service
+fi
 
 # ---- 11. smoke ---------------------------------------------------------------------------------
 if ((no_smoke == 0)); then
@@ -191,7 +225,7 @@ fi
 cat >&2 <<EOF
 $APP is installed and healthy.
   Headscale     $(hs_url HEADSCALE)/   (server_url for clients: $(ql_env_get HEADSCALE_SERVER_URL))
-  Headplane     $(hs_url HEADPLANE)/admin
+  Headplane     $(hs_url HEADPLANE)/admin (HTTP basic auth: admin; password in Podman secret $SECRET_ENTRANCE_PASSWORD)
   Metrics       $(hs_url HEADSCALE_METRICS)/metrics
   Enrol a node  $enrol_hint
                 then on the client: tailscale up --login-server $(ql_env_get HEADSCALE_SERVER_URL) --authkey <key>

@@ -1,4 +1,4 @@
-# Headplane 0.7.0: the admin UI for the Headscale control plane above. It is optional in the
+# Headplane 0.7.1: the admin UI for the Headscale control plane above. It is optional in the
 # sense that stopping it does not disturb a single VPN node, and it is never the path a
 # Tailscale client uses.
 #
@@ -20,11 +20,14 @@ After=headscale.service
 
 [Container]
 ContainerName=headplane
-Image=ghcr.io/tale/headplane:0.7.0@sha256:7bd6523a14567a43eb4ffa1e95e3d95456b8539c9d081757df3f228b9e836fb5
+Image=ghcr.io/tale/headplane:0.7.1@sha256:394483fd2336ce6b15df360c3e118ddfd45eb8140fe21df9f2611077f5d79d22
 Network=headscale.network
 HostName=headplane
-PublishPort=@@HEADPLANE_PUBLISH@@:3000
+# Only the entrance on headscale-net can reach this port. Never publish Headplane directly:
+# proxy_auth accepts the identity supplied by the trusted entrance.
 Volume=headplane-data.volume:/var/lib/headplane
+Volume=headscale-data.volume:/var/lib/headscale
+Volume=%h/.config/headscale/headscale/config.yaml:/etc/headscale/config.yaml:ro,Z
 Volume=%h/.config/headscale/headplane/config.yaml:/etc/headplane/config.yaml:ro,Z
 Secret=headscale-headplane-cookie,type=mount,target=/etc/headplane/cookie-secret,mode=0400
 Secret=headscale-headplane-api-key,type=mount,target=/etc/headplane/api-key,mode=0400

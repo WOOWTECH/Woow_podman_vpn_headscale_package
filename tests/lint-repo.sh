@@ -149,7 +149,7 @@ for s in "${runtime_paths[@]}"; do
   if git ls-files --error-unmatch "$s" >/dev/null 2>&1; then fail "$s is tracked; it must stay untracked/runtime-only"; fi
 done
 # `preauthkeys create -u/--user` takes a uint (a user ID). Spelling a NAME there is a command
-# nobody can run: headscale 0.29.3 answers
+# nobody can run: headscale 0.29.4 answers
 #   invalid argument "default" for "-u, --user" flag: strconv.ParseUint: parsing "default"
 # It shipped that way in install.sh's closing hint and in both READMEs, so every instruction this
 # repo gave for enrolling a node failed on the first command. Documentation is not covered by any

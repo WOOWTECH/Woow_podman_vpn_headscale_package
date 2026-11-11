@@ -12,7 +12,7 @@
 # unmodified upstream binary and gives the health check a shell to live in.
 #
 # Both bases are pinned by digest, so a rebuild on another host produces the same runtime.
-ARG HEADSCALE_SOURCE=docker.io/headscale/headscale:v0.29.3@sha256:0e7f1c6e4ce6c2a2a001103ecd3fa645a045adf30ac8a5234fe037b43000cd72
+ARG HEADSCALE_SOURCE=ghcr.io/juanfont/headscale:v0.29.4@sha256:8833f828b414c0907b7e5c71da76473216fe17cce0818a166b536ec552c0903f
 FROM ${HEADSCALE_SOURCE} AS upstream
 
 FROM docker.io/library/debian:12.11-slim@sha256:b1a741487078b369e78119849663d7f1a5341ef2768798f7b7406c4240f86aef
@@ -20,10 +20,10 @@ COPY --from=upstream /ko-app/headscale /ko-app/headscale
 COPY --from=upstream /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 LABEL org.opencontainers.image.title="Woow Headscale runtime" \
-      org.opencontainers.image.version="0.29.3" \
+      org.opencontainers.image.version="0.29.4" \
       org.opencontainers.image.source="https://github.com/WOOWTECH/Woow_podman_vpn_headscale_package" \
       io.woowtech.app="headscale" \
-      io.woowtech.headscale.source-image="docker.io/headscale/headscale:v0.29.3@sha256:0e7f1c6e4ce6c2a2a001103ecd3fa645a045adf30ac8a5234fe037b43000cd72"
+      io.woowtech.headscale.source-image="ghcr.io/juanfont/headscale:v0.29.4@sha256:8833f828b414c0907b7e5c71da76473216fe17cce0818a166b536ec552c0903f"
 
 # /ko-app on PATH so `podman exec headscale headscale ...` works without a full path.
 ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/ko-app" \

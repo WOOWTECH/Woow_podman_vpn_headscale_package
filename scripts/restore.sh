@@ -40,6 +40,7 @@ done
 archive=$(realpath -- "$archive")
 [[ -f $archive ]] || ql_die "archive not found: $archive"
 ql_require_rootless
+ql_require_user_systemd
 ql_lock "$APP"
 rollback_mode=${WOOW_RESTORE_ROLLBACK:-false}
 
@@ -94,24 +95,34 @@ fi
 
 # --confirm-restore is the confirmation; there is no second prompt, so the script also works
 # from the rollback path in cleanup() and from an unattended run.
-systemctl --user stop headplane.service headscale.service >/dev/null 2>&1 || true
+systemctl --user stop headscale-ngrok.service headscale-entrance.service headplane.service headscale.service >/dev/null 2>&1 || true
 if [[ $rollback_mode == false ]]; then
   pre_restore=$("$REPO/scripts/backup.sh" --include-secrets) || ql_die "the pre-restore backup failed; nothing was changed"
   ql_info "pre-restore archive: $pre_restore"
-  systemctl --user stop headplane.service headscale.service >/dev/null 2>&1 || true
+  systemctl --user stop headscale-ngrok.service headscale-entrance.service headplane.service headscale.service >/dev/null 2>&1 || true
 fi
 
 # ---- from here on, every failure takes the rollback path in cleanup() ---------------------------
 destructive=1
 for v in "${BACKUP_VOLUMES[@]}"; do
-  podman volume rm "$v" >/dev/null 2>&1 || true
-  systemctl --user start "$v-volume.service" || ql_die "could not recreate the volume $v"
+  if podman volume exists "$v"; then
+    podman volume rm "$v" >/dev/null || ql_die "could not remove the stopped volume $v"
+  fi
+  # A Quadlet volume unit may still say active after the Podman object was
+  # deleted; start would be a no-op and import would fail. Restart recreates it.
+  systemctl --user restart "$v-volume.service" || ql_die "could not recreate the volume $v"
   podman volume import "$v" "${vol_tar[$v]}" || ql_die "could not import the archived data into $v"
   ql_info "restored volume $v"
 done
 if ((restore_secrets)); then
   ql_secret_ensure "$SECRET_COOKIE" "file:$stage/secrets/${SECRET_COOKIE#"$APP"-}" --replace
   ql_secret_ensure "$SECRET_API_KEY" "file:$stage/secrets/${SECRET_API_KEY#"$APP"-}" --replace
+  if [[ -f $stage/secrets/${SECRET_ENTRANCE_PASSWORD#"$APP"-} ]]; then
+    ql_secret_ensure "$SECRET_ENTRANCE_PASSWORD" "file:$stage/secrets/${SECRET_ENTRANCE_PASSWORD#"$APP"-}" --replace
+  fi
+  if [[ -f $stage/secrets/${SECRET_NGROK_TOKEN#"$APP"-} ]]; then
+    ql_secret_ensure "$SECRET_NGROK_TOKEN" "file:$stage/secrets/${SECRET_NGROK_TOKEN#"$APP"-}" --replace
+  fi
 fi
 if ((restore_config)); then
   install -m 600 -- "$stage/config/$APP.env" "$ENV_FILE"

@@ -70,8 +70,19 @@ refuses that: its own URL would resolve through MagicDNS. Pick an unrelated base
   ql_assert_match HEADSCALE_IPV4_PREFIX "$(ql_env_get HEADSCALE_IPV4_PREFIX)" '[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}'
   ql_assert_match HEADSCALE_IPV6_PREFIX "$(ql_env_get HEADSCALE_IPV6_PREFIX)" '[0-9a-fA-F:]+/[0-9]{1,3}'
   ql_assert_match HEADSCALE_LOG_LEVEL "$(ql_env_get HEADSCALE_LOG_LEVEL)" 'trace|debug|info|warn|error'
+  ql_assert_match HEADSCALE_MAGIC_DNS "$(ql_env_get HEADSCALE_MAGIC_DNS true)" 'true|false'
+  ql_assert_match HEADSCALE_DNS_NAMESERVERS "$(ql_env_get HEADSCALE_DNS_NAMESERVERS cloudflare)" 'cloudflare|google|quad9'
+  ql_assert_match HEADSCALE_NODE_EXPIRY "$(ql_env_get HEADSCALE_NODE_EXPIRY 0)" '0|[1-9][0-9]{0,4}[hd]'
+  ql_assert_match HEADSCALE_POLICY_MODE "$(ql_env_get HEADSCALE_POLICY_MODE database)" 'database|file'
   ql_assert_match HEADSCALE_CREATE_DEFAULT_USER "$(ql_env_get HEADSCALE_CREATE_DEFAULT_USER)" 'true|false'
   ql_assert_match HEADPLANE_COOKIE_SECURE "$(ql_env_get HEADPLANE_COOKIE_SECURE)" 'true|false'
+  ql_assert_match HEADSCALE_NGROK_ENABLED "$(ql_env_get HEADSCALE_NGROK_ENABLED false)" 'true|false'
+  local ngrok_domain
+  ngrok_domain=$(ql_env_get HEADSCALE_NGROK_DOMAIN '')
+  if [[ $(ql_env_get HEADSCALE_NGROK_ENABLED false) == true ]]; then
+    ql_assert_match HEADSCALE_NGROK_DOMAIN "$ngrok_domain" '[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?'
+    [[ $url == "https://$ngrok_domain" ]] || ql_die "ngrok requires HEADSCALE_SERVER_URL=https://$ngrok_domain"
+  fi
   # A secure cookie is dropped by the browser over plain HTTP, and Headplane speaks HTTP inside
   # the container: the admin UI would accept the password and bounce straight back to the login.
   if [[ $(ql_env_get HEADPLANE_COOKIE_SECURE) == true && $url == http://* ]]; then
@@ -84,5 +95,6 @@ something in front of Headplane terminates TLS, otherwise the admin login loops"
     "HEADSCALE_PUBLISH=$(_ra_publish "$hs_bind" "$hs_port")"
     "HEADSCALE_METRICS_PUBLISH=$(_ra_publish "$mx_bind" "$mx_port")"
     "HEADPLANE_PUBLISH=$(_ra_publish "$hp_bind" "$hp_port")"
+    "HEADSCALE_NGROK_URL=https://$ngrok_domain"
   )
 }

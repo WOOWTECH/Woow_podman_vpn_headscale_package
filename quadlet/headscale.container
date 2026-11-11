@@ -1,4 +1,4 @@
-# Headscale 0.29.3: the Tailscale control plane. This unit is the whole server; Headplane
+# Headscale 0.29.4: the Tailscale control plane. This unit is the whole server; Headplane
 # (headplane.container) is only its web UI and is not needed for the VPN to work.
 #
 # The image is built locally by scripts/install.sh from ./Containerfile, because there is no
@@ -22,7 +22,7 @@ Documentation=https://headscale.net/stable/
 
 [Container]
 ContainerName=headscale
-Image=localhost/woow-headscale:0.29.3-r1
+Image=localhost/woow-headscale:0.29.4-r1
 Pull=never
 Network=headscale.network
 HostName=headscale
@@ -45,6 +45,7 @@ HealthTimeout=5s
 HealthRetries=12
 HealthStartPeriod=20s
 NoNewPrivileges=true
+Environment=GOMEMLIMIT=900MiB
 Label=io.woowtech.app=headscale
 # 4.9.3 has no StopTimeout= key; this is the supported spelling.
 PodmanArgs=--stop-timeout=30

@@ -1,0 +1,27 @@
+# PaaS-aligned Nginx admin entrance and private ngrok path filter.
+[Unit]
+Description=Woow Headscale admin entrance
+Requires=headplane.service
+After=headplane.service
+
+[Container]
+ContainerName=headscale-entrance
+Image=docker.io/nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
+Network=headscale.network
+HostName=headscale-entrance
+PublishPort=@@HEADPLANE_PUBLISH@@:3000
+Volume=%h/.config/headscale/entrance/nginx.conf:/etc/nginx/nginx.conf:ro,Z
+Volume=%h/.config/headscale/entrance/htpasswd:/etc/nginx/auth/htpasswd:ro,Z
+NoNewPrivileges=true
+Label=io.woowtech.app=headscale
+PodmanArgs=--stop-timeout=30
+
+[Service]
+SuccessExitStatus=143
+Restart=always
+RestartSec=10
+TimeoutStartSec=300
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target

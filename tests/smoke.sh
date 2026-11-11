@@ -42,6 +42,13 @@ app_env_load
 for u in "${UNITS[@]}"; do
   if systemctl --user is-active --quiet "$u"; then pass "A1 $u is active"; else fail "A1 $u is not active"; fi
 done
+if [[ $(ql_env_get HEADSCALE_NGROK_ENABLED false) == true ]]; then
+  if systemctl --user is-active --quiet headscale-ngrok.service; then
+    pass "A1 optional ngrok tunnel is active"
+  else
+    fail "A1 optional ngrok tunnel is not active"
+  fi
+fi
 
 # A2 health. Only headscale carries a HealthCmd (we build that image), and it is judged by its
 # HTTP /health endpoint with an active `podman healthcheck run` as corroboration - never by the
@@ -63,21 +70,48 @@ check_port() { # check_port <container> <container port> <bind key prefix>
 }
 check_port headscale 8080 HEADSCALE
 check_port headscale 9090 HEADSCALE_METRICS
-check_port headplane 3000 HEADPLANE
+check_port headscale-entrance 3000 HEADPLANE
+if [[ -z $(podman port headplane 2>/dev/null) ]]; then pass "A3 headplane has no direct host port"; else fail "A3 headplane must not publish a direct host port"; fi
 
 # A4 HTTP
 code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$(hs_url HEADSCALE /health)" || true)
 if [[ $code == 200 ]]; then pass "A4 headscale /health returns 200"; else fail "A4 headscale /health returned $code"; fi
 code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$(hs_url HEADPLANE /admin)" || true)
-if [[ $code =~ ^(200|30[12378])$ ]]; then pass "A4 headplane /admin returns $code"; else fail "A4 headplane /admin returned $code"; fi
+if [[ $code == 401 ]]; then pass "A4 unauthenticated /admin returns 401"; else fail "A4 unauthenticated /admin returned $code"; fi
+code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$(hs_url HEADPLANE /healthz-upstream)" || true)
+if [[ $code == 200 ]]; then pass "A4 headplane upstream health returns 200"; else fail "A4 headplane upstream health returned $code"; fi
 code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$(hs_url HEADSCALE_METRICS /metrics)" || true)
 if [[ $code == 200 ]]; then pass "A4 metrics return 200"; else fail "A4 metrics returned $code"; fi
+code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 -u admin:invalid "$(hs_url HEADPLANE /admin/)" || true)
+if [[ $code == 401 ]]; then pass "A4 wrong entrance password is rejected"; else fail "A4 wrong entrance password returned $code"; fi
+filter_code() {
+  { podman exec headscale-entrance /bin/sh -c "wget -q -S -O /dev/null http://127.0.0.1:8081$1 2>&1" || true; } \
+    | sed -nE 's/^[[:space:]]*HTTP\/1\.[01] ([0-9]{3}).*/\1/p' | head -n1
+}
+code=$(filter_code /health)
+if [[ $code == 200 ]]; then pass "A4 private control filter passes /health"; else fail "A4 private control filter /health returned $code"; fi
+code=$(filter_code /swagger)
+if [[ $code == 404 ]]; then pass "A4 private control filter blocks /swagger"; else fail "A4 private control filter /swagger returned $code"; fi
 
 if ((quick)); then
   printf '%s passed, %s failed, %s warnings (quick)\n' "$npass" "$nfail" "$nwarn"
   ((nfail == 0))
   exit
 fi
+
+# Feed the password on stdin, never in argv, environment or a curl command line.
+code=$(app_secret_read "$SECRET_ENTRANCE_PASSWORD" | python3 -c '
+import base64, sys, urllib.error, urllib.request
+password = sys.stdin.read().strip()
+url = sys.argv[1]
+header = "Basic " + base64.b64encode(("admin:" + password).encode()).decode()
+try:
+    response = urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": header}), timeout=20)
+    print(response.status if b"<html" in response.read(4096).lower() else 0)
+except urllib.error.HTTPError as error:
+    print(error.code)
+' "$(hs_url HEADPLANE /admin/)")
+if [[ $code == 200 ]]; then pass "A4 valid entrance password opens Headplane"; else fail "A4 valid entrance password returned $code"; fi
 
 # A5 the control plane answers its own CLI over the unix socket in headscale-run
 if hs_cli nodes list --output json >/dev/null 2>&1; then
@@ -94,22 +128,27 @@ cookie=$(app_secret_read "$SECRET_COOKIE" || true)
 api_key=$(app_secret_read "$SECRET_API_KEY" || true)
 [[ -n $cookie && -n $api_key ]] || fail "A7 secrets $SECRET_COOKIE / $SECRET_API_KEY are missing"
 leaks=()
-contains() { [[ -n $cookie && $1 == *"$cookie"* ]] || [[ -n $api_key && $1 == *"$api_key"* ]]; }
-contains "$(podman inspect headscale headplane 2>/dev/null || true)" && leaks+=("podman inspect")
-contains "$(podman top headscale args 2>/dev/null; podman top headplane args 2>/dev/null)" && leaks+=("process arguments")
-contains "$(journalctl --user -u headscale.service -u headplane.service -o cat --no-pager 2>/dev/null || true)" && leaks+=("journal")
-contains "$(podman logs --tail 2000 headscale 2>&1; podman logs --tail 2000 headplane 2>&1)" && leaks+=("container logs")
+entrance_password=$(app_secret_read "$SECRET_ENTRANCE_PASSWORD" || true)
+[[ -n $entrance_password ]] || fail "A7 entrance password secret is missing"
+contains() { [[ -n $cookie && $1 == *"$cookie"* ]] || [[ -n $api_key && $1 == *"$api_key"* ]] || [[ -n $entrance_password && $1 == *"$entrance_password"* ]]; }
+contains "$(podman inspect headscale headplane headscale-entrance 2>/dev/null || true)" && leaks+=("podman inspect")
+contains "$(podman top headscale args 2>/dev/null; podman top headplane args 2>/dev/null; podman top headscale-entrance args 2>/dev/null)" && leaks+=("process arguments")
+contains "$(journalctl --user -u headscale.service -u headplane.service -u headscale-entrance.service -o cat --no-pager 2>/dev/null || true)" && leaks+=("journal")
+contains "$(podman logs --tail 2000 headscale 2>&1; podman logs --tail 2000 headplane 2>&1; podman logs --tail 2000 headscale-entrance 2>&1)" && leaks+=("container logs")
 while IFS= read -r -d '' f; do
   [[ -f $REPO/$f ]] || continue
-  if contains "$(<"$REPO/$f")"; then leaks+=("tracked file $f"); fi
+  if grep -aFq -- "$cookie" "$REPO/$f" || grep -aFq -- "$api_key" "$REPO/$f" || grep -aFq -- "$entrance_password" "$REPO/$f"; then
+    leaks+=("tracked file $f")
+  fi
 done < <(git -C "$REPO" ls-files -z 2>/dev/null || true)
 if ((${#leaks[@]} == 0)); then pass "A7 no secret in inspect, argv, journal, logs or tracked files"; else fail "A7 a secret appears in: ${leaks[*]}"; fi
-unset cookie api_key
+unset cookie api_key entrance_password
 
 # A8 the secrets reach Headplane as 0400 files, and the configuration is read-only
 for p in /etc/headplane/cookie-secret /etc/headplane/api-key; do
-  perm=$(podman exec headplane stat -c '%a' "$p" 2>/dev/null || true)
-  if [[ $perm == 400 ]]; then pass "A8 $p is 0400 inside headplane"; else warn "A8 $p reports mode '${perm:-unknown}' (no stat in this image?)"; fi
+  perm=$(podman exec headplane /nodejs/bin/node -e \
+    'const fs=require("fs"); console.log((fs.statSync(process.argv[1]).mode & 0o777).toString(8))' "$p" 2>/dev/null || true)
+  if [[ $perm == 400 ]]; then pass "A8 $p is 0400 inside headplane"; else fail "A8 $p reports mode '${perm:-unknown}', want 0400"; fi
 done
 rw=$(podman inspect --format '{{range .Mounts}}{{if eq .Destination "/etc/headscale"}}{{.RW}}{{end}}{{end}}' headscale 2>/dev/null || true)
 if [[ $rw == false ]]; then pass "A8 /etc/headscale is mounted read-only"; else fail "A8 /etc/headscale mount RW=${rw:-missing}"; fi

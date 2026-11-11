@@ -11,8 +11,58 @@ hs_cli() { podman exec headscale headscale "$@"; }
 # files are rendered here, from the same env file and the same whitelist as the units.
 hs_render_configs() {
   local envf=$1 out=$2 vars=$REPO/config/templates/render-vars
-  ql_render "$REPO/config/templates/headscale" "$envf" "$vars" "$out/config/headscale"
-  ql_render "$REPO/config/templates/headplane" "$envf" "$vars" "$out/config/headplane"
+  local dns
+  case $(ql_env_get HEADSCALE_DNS_NAMESERVERS cloudflare) in
+    cloudflare) dns='"1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001"' ;;
+    google) dns='"8.8.8.8", "8.8.4.4", "2001:4860:4860::8888", "2001:4860:4860::8844"' ;;
+    quad9) dns='"9.9.9.9", "149.112.112.112", "2620:fe::fe", "2620:fe::9"' ;;
+    *) ql_die "invalid HEADSCALE_DNS_NAMESERVERS" ;;
+  esac
+  local -a override=(
+    "HEADSCALE_MAGIC_DNS=$(ql_env_get HEADSCALE_MAGIC_DNS true)"
+    "HEADSCALE_DNS_NAMESERVERS_YAML=$dns"
+    "HEADSCALE_NODE_EXPIRY=$(ql_env_get HEADSCALE_NODE_EXPIRY 0)"
+    "HEADSCALE_POLICY_MODE=$(ql_env_get HEADSCALE_POLICY_MODE database)"
+  )
+  ql_render "$REPO/config/templates/headscale" "$envf" "$vars" "$out/config/headscale" "${override[@]}"
+  ql_render "$REPO/config/templates/headplane" "$envf" "$vars" "$out/config/headplane" "${override[@]}"
+  ql_render "$REPO/config/templates/entrance" "$envf" "$vars" "$out/config/entrance" "${override[@]}"
+}
+
+# A Quadlet .network/.volume unit can remain active (exited) after an external
+# Podman reset removes the underlying object. systemd then skips its ExecStart
+# when headscale.service requires it. Recreate only missing objects, preserving
+# any existing data volumes and stopping the app before repairing dependencies.
+hs_ensure_quadlet_resources() {
+  local missing=0 item name unit
+  podman network exists headscale-net >/dev/null 2>&1 || missing=1
+  for name in headscale-data headscale-run headplane-data; do
+    podman volume exists "$name" >/dev/null 2>&1 || missing=1
+  done
+  ((missing)) || return 0
+  ql_warn "Headscale Quadlet resource unit is active but a Podman object is absent; repairing"
+  systemctl --user stop headscale-ngrok.service headscale-entrance.service headplane.service headscale.service 2>/dev/null || true
+  if ! podman network exists headscale-net >/dev/null 2>&1; then
+    systemctl --user restart headscale-network.service || ql_die "cannot restore headscale-net"
+  fi
+  for item in headscale-data:headscale-data-volume.service headscale-run:headscale-run-volume.service headplane-data:headplane-data-volume.service; do
+    name=${item%%:*} unit=${item#*:}
+    if ! podman volume exists "$name" >/dev/null 2>&1; then
+      systemctl --user restart "$unit" || ql_die "cannot restore $name"
+    fi
+  done
+  ql_mark_changed "$APP" headscale.service headplane.service headscale-entrance.service
+  [[ $(ql_env_get HEADSCALE_NGROK_ENABLED false) != true ]] || ql_mark_changed "$APP" headscale-ngrok.service
+}
+
+# Headscale 0.29.4 refuses to start when extra_records_path does not exist.
+# Initialize the data file before starting the service; preserve existing edits.
+hs_ensure_extra_records() {
+  podman run --rm --network none --pull never \
+    --volume headscale-data:/var/lib/headscale \
+    --entrypoint /bin/sh "$HEADSCALE_IMAGE" -c \
+    'test -e /var/lib/headscale/extra_records.json || printf "[]\n" > /var/lib/headscale/extra_records.json' \
+    >/dev/null || ql_die "could not initialize Headscale DNS records"
 }
 
 # hs_units_for_changed <changed file list>: the units that have to restart because one of the
@@ -25,6 +75,7 @@ hs_units_for_changed() {
     case $line in
       config/headscale/*) want[headscale.service]=1 ;;
       config/headplane/*) want[headplane.service]=1 ;;
+      config/entrance/*) want[headscale-entrance.service]=1 ;;
     esac
   done <<<"$1"
   if ((${#want[@]})); then printf '%s\n' "${!want[@]}"; fi
@@ -87,7 +138,7 @@ raise SystemExit(1)
 }
 
 # hs_ensure_default_user: create the headscale user "default" when the env file asks for it.
-# The autoApprovers in config/templates/headscale/policy.json name this user.
+# The default user is available for enrollment; route approvals remain explicit.
 hs_ensure_default_user() {
   local rc=0
   [[ $(ql_env_get HEADSCALE_CREATE_DEFAULT_USER false) == true ]] || return 0
@@ -110,7 +161,7 @@ hs_api_key_valid() {
   list=$(mktemp "${TMPDIR:-/tmp}/$APP-apikeys.XXXXXX") || return 1
   chmod 600 "$list"
   if hs_cli apikeys list --output json >"$list" 2>/dev/null; then
-    app_secret_read "$SECRET_API_KEY" | python3 "$REPO/scripts/validate-api-key.py" --list-json "$list" || rc=$?
+    app_secret_read "$SECRET_API_KEY" | python3 "$REPO/scripts/validate-api-key.py" --list-json "$list" --minimum-valid-days 30 || rc=$?
   else
     rc=1
   fi
@@ -133,7 +184,7 @@ hs_ensure_api_key() {
   if podman secret exists "$SECRET_API_KEY" >/dev/null 2>&1; then
     ((rotate)) || ql_warn "the stored Headplane API key is missing, revoked or expired: creating a new one"
   fi
-  out=$(hs_cli apikeys create --expiration 3650d 2>/dev/null) || ql_die "could not create a Headscale API key"
+  out=$(hs_cli apikeys create --expiration 365d 2>/dev/null) || ql_die "could not create a Headscale API key"
   local HS_NEW_API_KEY
   HS_NEW_API_KEY=$(printf '%s' "$out" | sed -e 's/[[:space:]]*$//' -e '/^$/d' | tail -n1)
   out=''
