@@ -1,4 +1,4 @@
-# Headscale 0.29.3 server configuration. Rendered by scripts/install.sh to
+# Headscale 0.29.4 server configuration. Rendered by scripts/install.sh to
 # ~/.config/headscale/headscale/config.yaml and bind-mounted read-only at
 # /etc/headscale/config.yaml. Do not edit the installed copy: edit
 # ~/.config/headscale/headscale.env and run scripts/install.sh again.
@@ -13,6 +13,7 @@ metrics_listen_addr: "0.0.0.0:9090"
 
 grpc_listen_addr: 127.0.0.1:50443
 grpc_allow_insecure: false
+disable_check_updates: true
 
 noise:
   private_key_path: /var/lib/headscale/noise_private.key
@@ -27,6 +28,7 @@ database:
   sqlite:
     path: /var/lib/headscale/db.sqlite
     write_ahead_log: true
+    wal_autocheckpoint: 1000
 
 derp:
   server:
@@ -36,17 +38,23 @@ derp:
   auto_update_enabled: true
   update_frequency: 24h
 
+node:
+  expiry: "@@HEADSCALE_NODE_EXPIRY@@"
+  ephemeral:
+    inactivity_timeout: 30m
+
 dns:
-  magic_dns: true
+  magic_dns: @@HEADSCALE_MAGIC_DNS@@
   base_domain: @@HEADSCALE_BASE_DOMAIN@@
+  override_local_dns: true
   nameservers:
-    global:
-      - 1.1.1.1
-      - 8.8.8.8
-  extra_records_path: /etc/headscale/extra_records.json
+    global: [@@HEADSCALE_DNS_NAMESERVERS_YAML@@]
+    split: {}
+  search_domains: []
+  extra_records_path: /var/lib/headscale/extra_records.json
 
 policy:
-  mode: file
+  mode: @@HEADSCALE_POLICY_MODE@@
   path: /etc/headscale/policy.json
 
 unix_socket: /var/run/headscale/headscale.sock
@@ -58,3 +66,6 @@ log:
 
 logtail:
   enabled: false
+
+taildrop:
+  enabled: true

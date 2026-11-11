@@ -56,7 +56,10 @@ fi
 ql_warn "upgrade failed; rolling back to the units saved in $snap/units"
 app_snapshot_restore "$snap/units" \
   || ql_die "rollback failed: no usable snapshot. Inspect $snap and journalctl --user -u headscale.service"
-systemctl --user restart headscale.service headplane.service || true
+systemctl --user restart headscale.service headplane.service headscale-entrance.service || true
+if [[ -f $HOME/.config/containers/systemd/headscale-ngrok.container ]]; then
+  systemctl --user restart headscale-ngrok.service || true
+fi
 if hs_wait_ready 300 headscale.service && "$REPO/tests/smoke.sh" --quick; then
   ql_die "upgrade failed and was rolled back; the previous version is running again"
 fi

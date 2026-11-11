@@ -40,6 +40,7 @@ was_running=()
 for u in "${UNITS[@]}"; do
   systemctl --user is-active --quiet "$u" 2>/dev/null && was_running+=("$u")
 done
+systemctl --user is-active --quiet headscale-ngrok.service 2>/dev/null && was_running+=(headscale-ngrok.service)
 staging=$(mktemp -d "${TMPDIR:-/tmp}/$APP-backup.XXXXXX")
 restarted=0
 cleanup() {
@@ -54,7 +55,8 @@ ql_cleanup backup_tidy cleanup
 
 # Stop in dependency order: Headplane holds an API session against Headscale.
 if ((${#was_running[@]})); then
-  systemctl --user stop headplane.service headscale.service
+  systemctl --user stop headscale-ngrok.service 2>/dev/null || true
+  systemctl --user stop headscale-entrance.service headplane.service headscale.service
   ql_info "stopped ${was_running[*]} for a consistent capture"
 fi
 
@@ -79,14 +81,14 @@ fi
 
 if ((include_secrets)); then
   mkdir -m 700 "$root/secrets"
-  for s in "$SECRET_COOKIE" "$SECRET_API_KEY"; do
+  for s in "$SECRET_COOKIE" "$SECRET_API_KEY" "$SECRET_ENTRANCE_PASSWORD" "$SECRET_NGROK_TOKEN"; do
     if podman secret exists "$s"; then
       (umask 077 && app_secret_read "$s" >"$root/secrets/${s#"$APP"-}") || ql_die "cannot read secret $s"
     else
       ql_warn "secret $s does not exist; it is not in the archive"
     fi
   done
-  ql_warn "the archive contains Headplane's cookie secret and API key (--include-secrets): keep it as private as a password"
+  ql_warn "the archive contains Headplane credentials and the entrance password (--include-secrets): keep it private"
 fi
 
 secrets_json=false

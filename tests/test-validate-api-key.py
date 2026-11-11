@@ -39,13 +39,19 @@ def main():
     fails(KEY, None, "empty listing")
     fails(OTHER, listing(), "the key belongs to another headscale")
     fails(KEY, listing(expiration=EARLIER), "expired")
+    try:
+        validator.validate(KEY, listing(expiration=(datetime.now(timezone.utc) + timedelta(days=29)).isoformat()), minimum_valid_days=30)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected rotation inside 30 days")
     fails(KEY, listing(revoked=True), "revoked")
     fails(KEY, listing(status="disabled"), "disabled")
     fails(KEY, listing(valid=False), "reported invalid")
     fails(KEY, [{"prefix": KEY[:22], "expiration": LATER}], "prefix without the *** mask")
     fails(KEY, listing(expiration=None), "no expiration")
     fails(KEY, {"api_keys": "nonsense"}, "listing is not a list")
-    print("validate-api-key: 15 case(s) passed")
+    print("validate-api-key: 16 case(s) passed")
     return 0
 
 

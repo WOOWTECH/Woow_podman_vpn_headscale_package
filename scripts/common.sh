@@ -11,8 +11,8 @@ ENV_EXAMPLE=$REPO/config/$APP.env.example
 ENV_FILE=$HOME/.config/$APP/$APP.env
 BACKUP_ROOT=$HOME/.local/share/woow-backups/$APP
 # container:unit pairs the units create (legacy-collision guard)
-CONTAINERS=("headscale:headscale.service" "headplane:headplane.service")
-UNITS=(headscale.service headplane.service)
+CONTAINERS=("headscale:headscale.service" "headplane:headplane.service" "headscale-entrance:headscale-entrance.service" "headscale-ngrok:headscale-ngrok.service")
+UNITS=(headscale.service headplane.service headscale-entrance.service)
 # every volume the units declare; BACKUP_VOLUMES holds the ones worth an archive
 # (headscale-run only carries the gRPC unix socket)
 VOLUMES=(headscale-data headscale-run headplane-data)
@@ -20,12 +20,16 @@ BACKUP_VOLUMES=(headscale-data headplane-data)
 # podman secrets; both are Headplane's, and neither is ever written into this repo
 SECRET_COOKIE=$APP-headplane-cookie
 SECRET_API_KEY=$APP-headplane-api-key
+SECRET_ENTRANCE_PASSWORD=$APP-entrance-password
+SECRET_NGROK_TOKEN=$APP-ngrok-authtoken
 # env keys allowed to carry user-supplied credentials (ERE on the whole key; empty = none)
 ENV_CREDENTIAL_ALLOW=''
 # images. tests/lint-repo.sh checks these against quadlet/ and Containerfile.
-HEADSCALE_IMAGE=localhost/woow-headscale:0.29.3-r1
-HEADSCALE_SOURCE_IMAGE=docker.io/headscale/headscale:v0.29.3@sha256:0e7f1c6e4ce6c2a2a001103ecd3fa645a045adf30ac8a5234fe037b43000cd72
-HEADPLANE_IMAGE=ghcr.io/tale/headplane:0.7.0@sha256:7bd6523a14567a43eb4ffa1e95e3d95456b8539c9d081757df3f228b9e836fb5
+HEADSCALE_IMAGE=localhost/woow-headscale:0.29.4-r1
+HEADSCALE_SOURCE_IMAGE=ghcr.io/juanfont/headscale:v0.29.4@sha256:8833f828b414c0907b7e5c71da76473216fe17cce0818a166b536ec552c0903f
+HEADPLANE_IMAGE=ghcr.io/tale/headplane:0.7.1@sha256:394483fd2336ce6b15df360c3e118ddfd45eb8140fe21df9f2611077f5d79d22
+ENTRANCE_IMAGE=docker.io/nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
+NGROK_IMAGE=docker.io/ngrok/ngrok:3.39.11-alpine@sha256:4147f33ead67712d642fde29af4a9e258d7a937ef97be146397b7e2a2e8e8dd1
 # the compose-era user units (see the compose-final tag). None of them may be active when the
 # Quadlet units take over the container names headscale and headplane.
 LEGACY_UNITS=(woow_headscale.service woow_headscale_health.timer woow_headscale_health.service)

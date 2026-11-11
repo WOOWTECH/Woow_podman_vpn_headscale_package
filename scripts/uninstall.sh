@@ -44,12 +44,12 @@ app_confirm "$APP" "$yes" "--purge deletes the Headscale database (every node ha
 if [[ ${QL_DRY_RUN:-0} != 1 ]]; then
   final=$(app_new_backup_dir final)
   # Cold copies: both containers stop first, so the SQLite database is consistent.
-  systemctl --user stop headplane.service headscale.service >/dev/null 2>&1 || true
+  systemctl --user stop headscale-ngrok.service headscale-entrance.service headplane.service headscale.service >/dev/null 2>&1 || true
   for v in "${BACKUP_VOLUMES[@]}"; do
     if podman volume exists "$v"; then ql_backup_volume "$v" "$final" >/dev/null; fi
   done
   (umask 077 && mkdir -- "$final/secrets") || ql_die "cannot create $final/secrets"
-  for s in "$SECRET_COOKIE" "$SECRET_API_KEY"; do
+  for s in "$SECRET_COOKIE" "$SECRET_API_KEY" "$SECRET_ENTRANCE_PASSWORD" "$SECRET_NGROK_TOKEN"; do
     if podman secret exists "$s"; then
       (umask 077 && app_secret_read "$s" >"$final/secrets/${s#"$APP"-}") || ql_warn "cannot read secret $s"
     fi

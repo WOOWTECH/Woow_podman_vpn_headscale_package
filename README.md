@@ -1,10 +1,12 @@
 # Headscale + Headplane on rootless Podman (Quadlet + systemd)
 
-A self-hosted Tailscale control plane on a single machine: **Headscale 0.29.3** serving the VPN
-and **Headplane 0.7.0** as its admin UI, installed as rootless Quadlet units managed by
+A self-hosted Tailscale control plane on a single machine: **Headscale 0.29.4** serving the VPN
+and **Headplane 0.7.1** as its admin UI, installed as rootless Quadlet units managed by
 `systemd --user`. Official Tailscale clients register against it unchanged.
 
 繁體中文說明：[README_zh-TW.md](README_zh-TW.md)
+
+2026-11-11 source comparison and live deployment: [alignment report](docs/ALIGNMENT-2026-11-11.md).
 
 > **Docker / podman-compose users:** the compose deployment is no longer on `main`. It is kept,
 > unchanged and working, at the **[`compose-final`](../../tree/compose-final)** tag:
@@ -16,8 +18,10 @@ and **Headplane 0.7.0** as its admin UI, installed as rootless Quadlet units man
 
 | Unit | Container | Image | Published by default |
 |---|---|---|---|
-| `headscale.service` | `headscale` | `localhost/woow-headscale:0.29.3-r1` (built locally) | `127.0.0.1:28080` → 8080, `127.0.0.1:29090` → 9090 |
-| `headplane.service` | `headplane` | `ghcr.io/tale/headplane:0.7.0` (digest-pinned) | `127.0.0.1:23000` → 3000 |
+| `headscale.service` | `headscale` | `localhost/woow-headscale:0.29.4-r1` (built locally) | `127.0.0.1:28080` → 8080, `127.0.0.1:29090` → 9090 |
+| `headplane.service` | `headplane` | `ghcr.io/tale/headplane:0.7.1` (digest-pinned) | private Podman network only |
+| `headscale-entrance.service` | `headscale-entrance` | `nginxinc/nginx-unprivileged:1.27-alpine` (digest-pinned) | `127.0.0.1:23000` → 3000 |
+| `headscale-ngrok.service` (optional) | `headscale-ngrok` | `ngrok/ngrok:3.39.11-alpine` (digest-pinned) | no host port; public HTTPS tunnel |
 | `headscale-network.service` | – | – | podman network `headscale-net` |
 | `headscale-data-volume.service` | – | – | volume `headscale-data` (SQLite + noise key) |
 | `headscale-run-volume.service` | – | – | volume `headscale-run` (the gRPC unix socket) |
@@ -55,7 +59,7 @@ scripts/install.sh                 # builds, installs, starts, smoke-tests
 The first run creates `~/.config/headscale/headscale.env` (mode 0600) from
 `config/headscale.env.example` and stops so the settings can be reviewed. `--accept-defaults`
 skips that pause. `scripts/install.sh` is idempotent: a re-run with nothing changed builds nothing,
-restarts nothing and keeps both secrets.
+restarts nothing and keeps generated secrets.
 
 Useful flags: `--set KEY=VALUE` (store a setting first), `--dry-run` (render, validate and report
 without touching anything), `--rebuild`, `--no-build`, `--build-only`, `--rotate-api-key`,
@@ -72,13 +76,15 @@ renders it into the unit files and into both containers' configuration at instal
 |---|---|
 | `WOOW_HEADSCALE_BIND` / `_PORT` | where the control plane is published (`127.0.0.1`, an address of this host, or `all`) |
 | `WOOW_HEADSCALE_METRICS_BIND` / `_PORT` | the Prometheus endpoint |
-| `WOOW_HEADPLANE_BIND` / `_PORT` | the admin UI |
+| `WOOW_HEADPLANE_BIND` / `_PORT` | the password-protected admin entrance |
 | `HEADSCALE_SERVER_URL` | **the URL clients dial.** The reverse proxy or port-forward in front of this host, not this container's port |
 | `HEADSCALE_BASE_DOMAIN` | MagicDNS suffix. It must not be, or contain, the `HEADSCALE_SERVER_URL` host — headscale refuses to start |
 | `HEADSCALE_IPV4_PREFIX` / `_IPV6_PREFIX` | the address pools handed to nodes |
 | `HEADSCALE_LOG_LEVEL` | `trace`…`error` |
 | `HEADSCALE_CREATE_DEFAULT_USER` | create the headscale user `default` on the first install |
 | `HEADPLANE_COOKIE_SECURE` | `true` only when something in front of Headplane terminates TLS |
+| `HEADSCALE_MAGIC_DNS`, `HEADSCALE_DNS_NAMESERVERS`, `HEADSCALE_NODE_EXPIRY`, `HEADSCALE_POLICY_MODE` | PaaS-aligned DNS, node expiration and editable database policy |
+| `HEADSCALE_NGROK_ENABLED`, `HEADSCALE_NGROK_DOMAIN` | optional reserved ngrok HTTPS domain; the token lives in a Podman secret |
 
 Every value is validated by `scripts/render-args.sh` **before a file is written** — a bad bind
 address, a port collision, a `server_url` with a path or credentials, or a base domain that would
@@ -111,29 +117,39 @@ goes in front: a router port-forward to nginx / Traefik / NPM with `Upgrade` and
 passed through and `proxy_buffering off`. The details, with the tested compatibility matrix, are in
 [`docs/EXTERNAL-ACCESS.md`](docs/EXTERNAL-ACCESS.md).
 
-The compose deployment also carried an optional **ngrok** sidecar for bootstrapping. It is not part
-of the Quadlet deployment: its free-tier URL changes on every restart, which would leave the
-rendered `server_url` stale after any reboot of a unit that restarts automatically. It is still
-available at the `compose-final` tag.
+An optional ngrok Quadlet can expose only the control protocol through the entrance's private
+path filter. It requires a reserved domain: set `HEADSCALE_NGROK_ENABLED=true`,
+`HEADSCALE_NGROK_DOMAIN=<domain>` and `HEADSCALE_SERVER_URL=https://<domain>` together. Create the
+token without putting it on a command line: run `scripts/set-ngrok-token.sh` and type the token on
+stdin, then run `scripts/install.sh`. A dynamically assigned free URL is not supported because it
+would invalidate the persistent `server_url` after a restart. The token is never written to a
+rendered unit or settings file. The default is off.
 
 ## Secrets
 
 Nothing secret is stored in this repository, in `~/.config`, or in any unit file. Headplane's two
-credentials are podman secrets, mounted read-only at mode 0400:
+credentials are Podman secrets mounted read-only at mode 0400; the entrance password is another
+Podman secret whose deterministic hash is installed as an nginx htpasswd file:
 
 | Secret | Where it comes from | Mounted at |
 |---|---|---|
 | `headscale-headplane-cookie` | 32 random characters, generated by `scripts/install.sh` | `/etc/headplane/cookie-secret` |
-| `headscale-headplane-api-key` | `headscale apikeys create --expiration 3650d`, run by `scripts/install.sh` once the control plane is up | `/etc/headplane/api-key` |
+| `headscale-headplane-api-key` | `headscale apikeys create --expiration 365d`, run by `scripts/install.sh` once the control plane is up | `/etc/headplane/api-key` |
+| `headscale-entrance-password` | 32 random characters, generated on first install | hash in `/etc/nginx/auth/htpasswd` |
+| `headscale-ngrok-authtoken` (optional) | `scripts/set-ngrok-token.sh` reads stdin | ngrok container environment |
+
+To view the generated admin password on the host, run
+`podman secret inspect --showsecret --format '{{.SecretData}}' headscale-entrance-password`.
+The username is `admin`; Headplane itself has no direct host-published port.
 
 The API key is checked on every install against `headscale apikeys list` and re-minted when it is
-missing, revoked or expired; `scripts/install.sh --rotate-api-key` forces a new one. The key never
+missing, revoked or within 30 days of expiry; `scripts/install.sh --rotate-api-key` forces a new one. The key never
 appears in an argument list: it is captured into a shell variable and handed to the library by
 variable name, and the validator reads it from stdin. `tests/smoke.sh` (check A7) asserts that
-neither secret appears in `podman inspect`, process arguments, the journal, container logs or any
+none of the three generated credentials appears in `podman inspect`, process arguments, the journal, container logs or any
 tracked file.
 
-There is **no `EnvironmentFile=`** in either container: every per-host value reaches the containers
+There is **no `EnvironmentFile=`** in the main containers: every per-host value reaches them
 as a rendered configuration file, so nothing sensitive can leak through `podman inspect`.
 
 ## Verify
@@ -177,7 +193,7 @@ back across a schema change is not enough on its own, so restore the pre-upgrade
 
 ```bash
 scripts/backup.sh                      # prints the archive path on stdout
-scripts/backup.sh --include-secrets    # also stores the cookie secret and API key
+scripts/backup.sh --include-secrets    # also stores credentials, including the entrance password
 scripts/restore.sh --archive ~/.local/share/woow-backups/headscale/headscale-<stamp>.tar \
                    --confirm-restore headscale [--restore-secrets] [--restore-config]
 ```
@@ -200,7 +216,7 @@ scripts/uninstall.sh --purge --confirm-purge headscale   # also volumes, network
 ```
 
 `--purge` is the only way this repository deletes data, and it takes a final cold backup —
-including both secrets and the settings file — before it does. Deleting `headscale-data` means
+including the secrets and the settings file — before it does. Deleting `headscale-data` means
 every node has to be enrolled again. Images and backups are never deleted.
 
 ## Why there is no `migrate-legacy.sh`
@@ -242,7 +258,7 @@ has soaked.
 `localhost/woow-headscale` is built on the host by `scripts/install.sh` from `Containerfile`
 (decision D3 — there is no WOOWTECH registry image yet; publishing to GHCR through CI is future
 work). The build is a two-stage copy: the headscale binary and CA bundle come from
-`docker.io/headscale/headscale:v0.29.3`, pinned by digest, on top of a digest-pinned
+`ghcr.io/juanfont/headscale:v0.29.4`, pinned by digest, on top of a digest-pinned
 `debian:12.11-slim`. The Debian layer exists only to provide `/bin/sh`: Quadlet's `HealthCmd=`
 becomes `podman run --health-cmd`, which podman runs through a shell, and the upstream ko image has
 none. The headscale binary itself is the unmodified upstream build. The build context contains the
@@ -255,13 +271,11 @@ Headplane is pulled from GHCR pinned by tag **and** digest. No floating tag is u
 
 * Ports are published on `127.0.0.1` by default; the admin UI and the metrics endpoint should stay
   that way and be reached through a proxy or an SSH tunnel.
-* `NoNewPrivileges=true` on both containers.
+* `NoNewPrivileges=true` on every container.
 * `/etc/headscale` and `/etc/headplane/config.yaml` are mounted **read-only**; `tests/smoke.sh`
   asserts it.
-* `config/templates/headscale/policy.json` ships the permissive starter policy the verified
-  deployment used — `accept *:*` for every node, with `autoApprovers` for RFC1918 subnet routes and
-  exit nodes for the `default` user. **Tighten it before letting untrusted devices in**, then run
-  `scripts/install.sh` again to install the new policy and restart the control plane.
+* The default database policy mode lets Headplane edit policy. The optional file policy template
+  allows all node traffic; tighten it before enrolling untrusted devices.
 * The metrics endpoint is unauthenticated: keep it on loopback.
 * `tests/lint-repo.sh` fails the build on any credential assignment, any Headscale-key-shaped
   string, an ngrok auth token, or an inline comment after a value in the settings example.
@@ -273,7 +287,7 @@ Containerfile                       the locally built headscale runtime image
 quadlet/*.container|volume|network  the units, carrying @@TOKEN@@ placeholders
 quadlet/render-vars                 the whitelist of tokens install.sh may substitute
 config/headscale.env.example        the per-host settings, copied to ~/.config/headscale/
-config/templates/**                 the two containers' configuration, rendered at install time
+config/templates/**                 server, UI and entrance configuration, rendered at install time
 config/templates/render-vars        the whitelist for those templates (separate on purpose)
 scripts/install.sh upgrade.sh uninstall.sh backup.sh restore.sh
 scripts/common.sh headscale-helpers.sh render-args.sh validate-api-key.py

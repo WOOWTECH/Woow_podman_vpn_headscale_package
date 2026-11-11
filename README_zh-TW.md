@@ -1,10 +1,12 @@
 # Headscale + Headplane on rootless Podman（Quadlet + systemd）
 
-在單一主機上自架 Tailscale 控制平面：**Headscale 0.29.3** 提供 VPN，**Headplane 0.7.0** 作為管理
-介面，兩者都以 rootless Quadlet unit 安裝，由 `systemd --user` 管理。官方 Tailscale 客戶端不需修改
+在單一主機上自架 Tailscale 控制平面：**Headscale 0.29.4** 提供 VPN，**Headplane 0.7.1** 作為管理
+介面，以 rootless Quadlet unit 安裝，由 `systemd --user` 管理。官方 Tailscale 客戶端不需修改
 即可註冊。
 
 English: [README.md](README.md)
+
+2026-11-11 的來源對照與主機實測：[對齊紀錄](docs/ALIGNMENT-2026-11-11.md)。
 
 > **Docker / podman-compose 使用者：** compose 部署已不在 `main`。它原封不動保留在
 > **[`compose-final`](../../tree/compose-final)** tag：`git checkout compose-final`。
@@ -15,8 +17,10 @@ English: [README.md](README.md)
 
 | Unit | 容器 | 映像 | 預設發布位址 |
 |---|---|---|---|
-| `headscale.service` | `headscale` | `localhost/woow-headscale:0.29.3-r1`（本機建置） | `127.0.0.1:28080` → 8080、`127.0.0.1:29090` → 9090 |
-| `headplane.service` | `headplane` | `ghcr.io/tale/headplane:0.7.0`（digest 釘選） | `127.0.0.1:23000` → 3000 |
+| `headscale.service` | `headscale` | `localhost/woow-headscale:0.29.4-r1`（本機建置） | `127.0.0.1:28080` → 8080、`127.0.0.1:29090` → 9090 |
+| `headplane.service` | `headplane` | `ghcr.io/tale/headplane:0.7.1`（digest 釘選） | 僅 Podman 私有網路 |
+| `headscale-entrance.service` | `headscale-entrance` | `nginxinc/nginx-unprivileged:1.27-alpine`（digest 釘選） | `127.0.0.1:23000` → 3000 |
+| `headscale-ngrok.service`（選用） | `headscale-ngrok` | `ngrok/ngrok:3.39.11-alpine`（digest 釘選） | 不發布主機埠；外部 HTTPS tunnel |
 | `headscale-network.service` | – | – | podman 網路 `headscale-net` |
 | `headscale-data-volume.service` | – | – | volume `headscale-data`（SQLite 與 noise key） |
 | `headscale-run-volume.service` | – | – | volume `headscale-run`（gRPC unix socket） |
@@ -51,7 +55,7 @@ scripts/install.sh                 # 建置、安裝、啟動、煙霧測試
 
 第一次執行會以 `config/headscale.env.example` 建立 `~/.config/headscale/headscale.env`（權限
 0600）並停下來讓你檢查設定；加 `--accept-defaults` 可略過。`scripts/install.sh` 具備冪等性：內容
-沒變的重跑不會建置、不會重啟，也會保留兩個 secret。
+沒變的重跑不會建置、不會重啟，也會保留產生的 secret。
 
 常用旗標：`--set KEY=VALUE`、`--dry-run`（只渲染、驗證並報告，不動任何東西）、`--rebuild`、
 `--no-build`、`--build-only`、`--rotate-api-key`、`--no-start`、`--no-smoke`。
@@ -60,19 +64,21 @@ scripts/install.sh                 # 建置、安裝、啟動、煙霧測試
 
 所有 per-host 設定都在 `~/.config/headscale/headscale.env` — `KEY=VALUE`、不加引號，而且
 **值後面不可以有 `# 註解`**。這個檔案不會掛進任何容器：`scripts/install.sh` 會在安裝時把它渲染
-進 unit 檔與兩個容器的設定檔（決策 D2），所以改完之後要再跑一次 `scripts/install.sh`。
+進 unit 檔與容器的設定檔（決策 D2），所以改完之後要再跑一次 `scripts/install.sh`。
 
 | 設定鍵 | 用途 |
 |---|---|
 | `WOOW_HEADSCALE_BIND` / `_PORT` | 控制平面發布在哪（`127.0.0.1`、本機某個位址，或 `all`） |
 | `WOOW_HEADSCALE_METRICS_BIND` / `_PORT` | Prometheus 端點 |
-| `WOOW_HEADPLANE_BIND` / `_PORT` | 管理介面 |
+| `WOOW_HEADPLANE_BIND` / `_PORT` | 有密碼保護的管理入口 |
 | `HEADSCALE_SERVER_URL` | **客戶端實際連線的 URL。** 是這台主機前面的反向代理或 port-forward，不是容器的埠 |
 | `HEADSCALE_BASE_DOMAIN` | MagicDNS 後綴。不可等於或包含 `HEADSCALE_SERVER_URL` 的主機名，否則 headscale 拒絕啟動 |
 | `HEADSCALE_IPV4_PREFIX` / `_IPV6_PREFIX` | 配發給節點的位址池 |
 | `HEADSCALE_LOG_LEVEL` | `trace`…`error` |
 | `HEADSCALE_CREATE_DEFAULT_USER` | 首次安裝時建立 headscale 使用者 `default` |
 | `HEADPLANE_COOKIE_SECURE` | 只有在 Headplane 前面有東西終結 TLS 時才設 `true` |
+| `HEADSCALE_MAGIC_DNS`、`HEADSCALE_DNS_NAMESERVERS`、`HEADSCALE_NODE_EXPIRY`、`HEADSCALE_POLICY_MODE` | 與 PaaS 對齊的 DNS、節點期限與資料庫政策 |
+| `HEADSCALE_NGROK_ENABLED`、`HEADSCALE_NGROK_DOMAIN` | 選用的固定 ngrok HTTPS 網域；token 放在 Podman secret |
 
 每個值都由 `scripts/render-args.sh` 在**寫出任何檔案之前**驗證 — 錯誤的 bind 位址、埠衝突、帶路徑
 或帶帳密的 `server_url`、會把 server URL 吃掉的 base domain，都會中止安裝且不留下任何變更。
@@ -103,26 +109,34 @@ Tailscale 控制協定（TS2021）是帶有非標準 `Upgrade:` 標頭的 `POST`
 `Upgrade` 與 `Connection` 原樣轉送、`proxy_buffering off`。完整的實測相容性表格見
 [`docs/EXTERNAL-ACCESS.md`](docs/EXTERNAL-ACCESS.md)。
 
-compose 部署另外附了一個選用的 **ngrok** sidecar 供快速打通用。Quadlet 部署不納入它：免費方案的
-URL 每次重啟都會變，而在會自動重啟的 unit 底下，渲染好的 `server_url` 會在任何一次重開後就失效。
-需要的話仍可在 `compose-final` tag 取得。
+Quadlet 提供選用的 ngrok tunnel，只會經管理入口的私有路徑過濾器公開 Tailscale 控制協定。
+需要固定網域：同時設定 `HEADSCALE_NGROK_ENABLED=true`、`HEADSCALE_NGROK_DOMAIN=<domain>`、
+`HEADSCALE_SERVER_URL=https://<domain>`，以 `scripts/set-ngrok-token.sh` 從 stdin 寫入 token，再執行
+`scripts/install.sh`。動態分配的免費 URL 不支援，因為重啟後可能讓持久化的 `server_url` 失效。
+預設不啟用。
 
 ## Secret
 
-本倉庫、`~/.config` 以及任何 unit 檔案中都不存放任何機密。Headplane 的兩個憑證是 podman secret，
-以唯讀 0400 掛載：
+本倉庫、`~/.config` 以及任何 unit 檔案中都不存放明文機密。Headplane 的兩個憑證是 Podman secret，
+以唯讀 0400 掛載；管理入口密碼也是 Podman secret，只有雜湊值裝進 nginx：
 
 | Secret | 來源 | 掛載位置 |
 |---|---|---|
 | `headscale-headplane-cookie` | `scripts/install.sh` 產生的 32 個隨機字元 | `/etc/headplane/cookie-secret` |
-| `headscale-headplane-api-key` | 控制平面啟動後由 `scripts/install.sh` 執行 `headscale apikeys create --expiration 3650d` | `/etc/headplane/api-key` |
+| `headscale-headplane-api-key` | 控制平面啟動後由 `scripts/install.sh` 執行 `headscale apikeys create --expiration 365d` | `/etc/headplane/api-key` |
+| `headscale-entrance-password` | 首次安裝時產生的 32 個隨機字元 | 雜湊值在 `/etc/nginx/auth/htpasswd` |
+| `headscale-ngrok-authtoken`（選用） | `scripts/set-ngrok-token.sh` 從 stdin 讀取 | ngrok 容器環境變數 |
 
-每次安裝都會拿 `headscale apikeys list` 驗證這把 key，若遺失、被撤銷或過期就重新產生；
+管理入口帳號是 `admin`。在主機執行
+`podman secret inspect --showsecret --format '{{.SecretData}}' headscale-entrance-password`
+可查看產生的密碼。Headplane 不直接發布主機埠。
+
+每次安裝都會拿 `headscale apikeys list` 驗證這把 key，若遺失、被撤銷或距過期不足 30 天就重新產生；
 `scripts/install.sh --rotate-api-key` 可強制更換。這把 key 不會出現在任何參數列：它被收進 shell
-變數後以「變數名稱」交給函式庫，驗證器則從 stdin 讀取。`tests/smoke.sh`（檢查 A7）會確認兩個
-secret 都沒有出現在 `podman inspect`、行程參數、journal、容器日誌或任何被追蹤的檔案中。
+變數後以「變數名稱」交給函式庫，驗證器則從 stdin 讀取。`tests/smoke.sh`（檢查 A7）會確認三個
+產生的憑證沒有出現在 `podman inspect`、行程參數、journal、容器日誌或任何被追蹤的檔案中。
 
-兩個容器都**沒有 `EnvironmentFile=`**：所有 per-host 值都以渲染好的設定檔進入容器，因此不會透過
+主要容器都**沒有 `EnvironmentFile=`**：所有 per-host 值都以渲染好的設定檔進入容器，因此不會透過
 `podman inspect` 外洩。
 
 ## 驗證
@@ -130,7 +144,7 @@ secret 都沒有出現在 `podman inspect`、行程參數、journal、容器日�
 ```bash
 tests/smoke.sh              # unit、健康、發布的埠、HTTP、API key、secret 衛生
 tests/smoke.sh --quick      # 只檢查 unit、健康、埠與 HTTP
-systemctl --user status headscale.service headplane.service
+systemctl --user status headscale.service headplane.service headscale-entrance.service
 journalctl --user -u headscale.service -f
 ```
 
@@ -152,7 +166,7 @@ git pull && scripts/upgrade.sh
 
 ```bash
 scripts/backup.sh                      # 封存檔路徑印在 stdout
-scripts/backup.sh --include-secrets    # 連 cookie secret 與 API key 一起存
+scripts/backup.sh --include-secrets    # 連 cookie、API key 與管理密碼一起存
 scripts/restore.sh --archive ~/.local/share/woow-backups/headscale/headscale-<stamp>.tar \
                    --confirm-restore headscale [--restore-secrets] [--restore-config]
 ```
@@ -172,7 +186,7 @@ scripts/uninstall.sh                                     # 只移除 unit，資�
 scripts/uninstall.sh --purge --confirm-purge headscale   # 連 volume、網路、secret、設定一起刪
 ```
 
-`--purge` 是本倉庫刪除資料的唯一途徑，而且會先做一份包含兩個 secret 與設定檔的冷備份。刪掉
+`--purge` 是本倉庫刪除資料的唯一途徑，而且會先做一份包含 secret 與設定檔的冷備份。刪掉
 `headscale-data` 等於所有節點都要重新加入。映像與備份永遠不會被刪除。
 
 ## 為什麼沒有 `migrate-legacy.sh`
@@ -208,7 +222,7 @@ scripts/install.sh
 
 `localhost/woow-headscale` 由 `scripts/install.sh` 在主機上依 `Containerfile` 建置（決策 D3 —
 目前還沒有 WOOWTECH registry 映像；透過 CI 發佈到 GHCR 是後續工作）。建置是兩段式複製：headscale
-執行檔與 CA 憑證取自以 digest 釘選的 `docker.io/headscale/headscale:v0.29.3`，疊在同樣以 digest
+執行檔與 CA 憑證取自以 digest 釘選的 `ghcr.io/juanfont/headscale:v0.29.4`，疊在同樣以 digest
 釘選的 `debian:12.11-slim` 上。加上 Debian 層的唯一理由是提供 `/bin/sh`：Quadlet 的 `HealthCmd=`
 會變成 `podman run --health-cmd`，而 podman 是透過 shell 執行它的，上游的 ko 映像裡沒有 shell。
 headscale 執行檔本身就是未經修改的上游版本。建置 context 只有 `Containerfile` 一個檔案，所以這份
@@ -219,11 +233,10 @@ Headplane 從 GHCR 拉取，同時以 tag **與** digest 釘選。全倉庫沒�
 ## 安全性說明
 
 * 預設所有埠都發布在 `127.0.0.1`；管理介面與 metrics 端點應維持如此，透過代理或 SSH tunnel 存取。
-* 兩個容器都設定 `NoNewPrivileges=true`。
+* 所有容器都設定 `NoNewPrivileges=true`。
 * `/etc/headscale` 與 `/etc/headplane/config.yaml` 皆以**唯讀**掛載，`tests/smoke.sh` 會驗證。
-* `config/templates/headscale/policy.json` 沿用已驗證部署所使用的寬鬆起始政策 — 對所有節點
-  `accept *:*`，並為 `default` 使用者自動核准 RFC1918 子網路由與 exit node。**在讓不受信任的裝置
-  加入之前請先收緊**，改完後再跑一次 `scripts/install.sh` 以安裝新政策並重啟控制平面。
+* 預設的資料庫政策模式可由 Headplane 編輯；選用的檔案政策模板允許所有節點互通。
+  在讓不受信任的裝置加入前應收緊規則。
 * metrics 端點沒有驗證：請保持在 loopback。
 * `tests/lint-repo.sh` 會在出現任何憑證賦值、任何 Headscale 金鑰形狀的字串、ngrok auth token，
   或設定範例中值後面的行內註解時讓 CI 失敗。
@@ -235,7 +248,7 @@ Containerfile                       本機建置的 headscale runtime 映像
 quadlet/*.container|volume|network  帶 @@TOKEN@@ 佔位符的 unit
 quadlet/render-vars                 install.sh 可代換的 token 白名單
 config/headscale.env.example        per-host 設定，複製到 ~/.config/headscale/
-config/templates/**                 兩個容器的設定檔，安裝時渲染
+config/templates/**                 控制平面、網頁與管理入口的設定檔，安裝時渲染
 config/templates/render-vars        上述模板的白名單（刻意與 unit 分開）
 scripts/install.sh upgrade.sh uninstall.sh backup.sh restore.sh
 scripts/common.sh headscale-helpers.sh render-args.sh validate-api-key.py

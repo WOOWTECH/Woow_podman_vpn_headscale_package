@@ -10,7 +10,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 API_KEY = re.compile(r"hskey-api-([A-Za-z0-9_-]{12})-([A-Za-z0-9_-]{64})", re.ASCII)
 MARKER = "hskey-api-"
@@ -62,7 +62,7 @@ def visible_prefix(value):
     return shown
 
 
-def validate(key_text, payload, now=None):
+def validate(key_text, payload, now=None, minimum_valid_days=0):
     key = key_text.strip()
     if not API_KEY.fullmatch(key):
         raise ValueError("the stored Headplane API key is not shaped like a headscale API key")
@@ -82,17 +82,20 @@ def validate(key_text, payload, now=None):
     status = record.get("status")
     if record.get("valid") is False or (isinstance(status, str) and status.lower() in INVALID_STATUS):
         raise ValueError("headscale reports the stored Headplane API key as not valid")
-    if expiration(record.get("expiration")) <= (now or datetime.now(timezone.utc)):
-        raise ValueError("the stored Headplane API key has expired")
+    if expiration(record.get("expiration")) <= (now or datetime.now(timezone.utc)) + timedelta(days=minimum_valid_days):
+        raise ValueError("the stored Headplane API key has expired or is inside the rotation window")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list-json", required=True, help="output of `headscale apikeys list --output json`")
+    parser.add_argument("--minimum-valid-days", type=int, default=0, help="rotate before this many days remain")
     arguments = parser.parse_args()
+    if arguments.minimum_valid_days < 0:
+        parser.error("--minimum-valid-days must be non-negative")
     try:
         with open(arguments.list_json, encoding="utf-8") as source:
-            validate(sys.stdin.read(), json.load(source))
+            validate(sys.stdin.read(), json.load(source), minimum_valid_days=arguments.minimum_valid_days)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         print(f"validate-api-key: {exc}", file=sys.stderr)
         return 1

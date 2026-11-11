@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-11 — HA add-on and PaaS Headscale alignment
+
+- Pin Headscale 0.29.4 and Headplane 0.7.1; add PaaS DNS, node expiration, database policy and runtime settings.
+- Add an nginx Basic Auth entrance with Headplane proxy auth, security headers, request throttling and a private control-protocol path filter. Add a reserved-domain ngrok HTTP Quadlet that remains off by default.
+- Repair missing Podman network/volumes after a reset and create the DNS extra-records file before Headscale starts.
+- Extend cold backup/restore to include the entrance and its password; fix volume recreation during restore.
+- Add isolated real-client registration test and [source comparison and deployment evidence](docs/ALIGNMENT-2026-11-11.md).
+
 ## Unreleased — Quadlet + systemd as the primary deployment (v1)
 
 ### Added
