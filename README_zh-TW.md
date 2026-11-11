@@ -20,14 +20,15 @@ English: [README.md](README.md)
 | `headscale.service` | `headscale` | `localhost/woow-headscale:0.29.4-r1`（本機建置） | `127.0.0.1:28080` → 8080、`127.0.0.1:29090` → 9090 |
 | `headplane.service` | `headplane` | `ghcr.io/tale/headplane:0.7.1`（digest 釘選） | 僅 Podman 私有網路 |
 | `headscale-entrance.service` | `headscale-entrance` | `nginxinc/nginx-unprivileged:1.27-alpine`（digest 釘選） | `127.0.0.1:23000` → 3000 |
-| `headscale-ngrok.service`（選用） | `headscale-ngrok` | `ngrok/ngrok:3.39.11-alpine`（digest 釘選） | 不發布主機埠；外部 HTTPS tunnel |
+| `headscale-ngrok.service`（選用） | `headscale-ngrok` | `ngrok/ngrok:3.39.11-alpine`（digest 釘選） | 不發布主機埠；外部 HTTPS 或測試用 TCP tunnel |
 | `headscale-network.service` | – | – | podman 網路 `headscale-net` |
 | `headscale-data-volume.service` | – | – | volume `headscale-data`（SQLite 與 noise key） |
 | `headscale-run-volume.service` | – | – | volume `headscale-run`（gRPC unix socket） |
 | `headplane-data-volume.service` | – | – | volume `headplane-data` |
 
 **兩者為何分開。** Headscale 就是 VPN 本身：節點資料庫、noise key 與政策都在它手上，客戶端也只跟它
-通訊。Headplane 只是 Headscale REST API 前面的網頁介面，把它停掉不會有任何節點受影響。分成兩個
+通訊。Headplane 是 Headscale REST API 前面的網頁介面；把它停掉不會停止 Headscale，但公開 ngrok
+控制入口經過依賴 Headplane 的 nginx 入口，停用期間新節點註冊可能中斷。分成兩個
 unit 的理由：
 
 * Headplane 可以單獨重啟、升級或移除，完全不動到控制平面；
@@ -78,7 +79,7 @@ scripts/install.sh                 # 建置、安裝、啟動、煙霧測試
 | `HEADSCALE_CREATE_DEFAULT_USER` | 首次安裝時建立 headscale 使用者 `default` |
 | `HEADPLANE_COOKIE_SECURE` | 只有在 Headplane 前面有東西終結 TLS 時才設 `true` |
 | `HEADSCALE_MAGIC_DNS`、`HEADSCALE_DNS_NAMESERVERS`、`HEADSCALE_NODE_EXPIRY`、`HEADSCALE_POLICY_MODE` | 與 PaaS 對齊的 DNS、節點期限與資料庫政策 |
-| `HEADSCALE_NGROK_ENABLED`、`HEADSCALE_NGROK_DOMAIN` | 選用的固定 ngrok HTTPS 網域；token 放在 Podman secret |
+| `HEADSCALE_NGROK_ENABLED`、`HEADSCALE_NGROK_MODE`、`HEADSCALE_NGROK_DOMAIN` | 選用 ngrok HTTP 固定／dev 網域或短期測試 TCP；agent token 放在 Podman secret |
 
 每個值都由 `scripts/render-args.sh` 在**寫出任何檔案之前**驗證 — 錯誤的 bind 位址、埠衝突、帶路徑
 或帶帳密的 `server_url`、會把 server URL 吃掉的 base domain，都會中止安裝且不留下任何變更。
@@ -110,10 +111,22 @@ Tailscale 控制協定（TS2021）是帶有非標準 `Upgrade:` 標頭的 `POST`
 [`docs/EXTERNAL-ACCESS.md`](docs/EXTERNAL-ACCESS.md)。
 
 Quadlet 提供選用的 ngrok tunnel，只會經管理入口的私有路徑過濾器公開 Tailscale 控制協定。
-需要固定網域：同時設定 `HEADSCALE_NGROK_ENABLED=true`、`HEADSCALE_NGROK_DOMAIN=<domain>`、
-`HEADSCALE_SERVER_URL=https://<domain>`，以 `scripts/set-ngrok-token.sh` 從 stdin 寫入 token，再執行
-`scripts/install.sh`。動態分配的免費 URL 不支援，因為重啟後可能讓持久化的 `server_url` 失效。
-預設不啟用。
+以 `scripts/set-ngrok-token.sh` 從 stdin 寫入 **agent authtoken**，再設定：
+
+- 固定 HTTPS：`HEADSCALE_NGROK_ENABLED=true`、`HEADSCALE_NGROK_MODE=http`、
+  `HEADSCALE_NGROK_DOMAIN=<domain>`、`HEADSCALE_SERVER_URL=https://<domain>`。
+- 帳號 dev domain：`HEADSCALE_NGROK_ENABLED=true`、`HEADSCALE_NGROK_MODE=http`、
+  `HEADSCALE_NGROK_DOMAIN=`。該 dev domain 必須沒有被另一個 agent 使用；安裝時從 ngrok
+  本機 API 讀取實際 HTTPS URL 並寫入 `HEADSCALE_SERVER_URL` 與兩份容器設定。
+- 原始 TCP 測試：`HEADSCALE_NGROK_ENABLED=true`、`HEADSCALE_NGROK_MODE=tcp`。需可開 TCP
+  endpoint 的 ngrok 帳號與 agent token；程式會從 agent 讀取 `tcp://host:port`，將
+  `HEADSCALE_SERVER_URL` 設為 `http://host:port`。**沒有 TLS，只適合短期測試。**
+
+執行 `scripts/install.sh` 後，`tests/smoke.sh` 會比對設定網址與 agent 的實際網址。每次
+Headscale 啟動前也會重新讀取 ngrok API；ngrok 暫時離線時保留上次設定，使本機控制平面可啟動。
+帳號分配的 dev domain 本身跨 agent 重啟保持不變；但這台主機的帳號 dev domain 已供另一個
+服務使用，所以正式服務保持固定 HTTPS 網域。完整實測見[對齊紀錄](docs/ALIGNMENT-2026-11-11.md)。
+預設不啟用 ngrok。
 
 ## Secret
 

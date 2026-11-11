@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-11 — ngrok discovery, TCP test mode and browser acceptance
+
+- Resolve the live ngrok URL before Headscale starts. Support the account dev domain and the HA add-on's raw TCP test mode; verify that the running tunnel agrees with `HEADSCALE_SERVER_URL`.
+- Keep the public tunnel behind the private path filter and exempt Headplane's immutable assets from the admin request rate limit, which previously returned 429 during browser navigation.
+- Add live cross-host/DERP, Headplane browser and temporary ngrok TCP acceptance scripts. The TCP test restores the production HTTPS tunnel and revokes its temporary agent credential.
+- Record the observed Headplane 0.7.1 ACL page's intermittent HTTP 500 and the UI features unavailable without writable config, OIDC or the optional Headplane Agent.
+
 ## 2026-11-11 — HA add-on and PaaS Headscale alignment
 
 - Pin Headscale 0.29.4 and Headplane 0.7.1; add PaaS DNS, node expiration, database policy and runtime settings.

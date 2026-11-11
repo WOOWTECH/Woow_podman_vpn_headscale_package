@@ -1,17 +1,16 @@
-# Optional public HTTPS control-plane endpoint. A reserved domain and a Podman
-# authtoken secret are required; neither the admin UI nor the Headscale API is
-# exposed through this tunnel (the entrance's private :8081 filters paths).
+# Optional public control-plane endpoint. HTTP supports a reserved domain or
+# the account's dev domain; TCP is for testing only (no TLS). Both modes dial
+# the entrance's private :8081 path filter, never the admin UI or API.
 [Unit]
 Description=Woow Headscale ngrok control tunnel
-Requires=headscale-entrance.service
-After=headscale-entrance.service
+Before=headscale.service
 
 [Container]
 ContainerName=headscale-ngrok
 Image=docker.io/ngrok/ngrok:3.39.11-alpine@sha256:4147f33ead67712d642fde29af4a9e258d7a937ef97be146397b7e2a2e8e8dd1
 Network=headscale.network
 HostName=headscale-ngrok
-Exec=http headscale-entrance:8081 --url @@HEADSCALE_NGROK_URL@@ --log stdout --inspect=false
+Exec=@@HEADSCALE_NGROK_EXEC@@
 Secret=headscale-ngrok-authtoken,type=env,target=NGROK_AUTHTOKEN
 NoNewPrivileges=true
 Label=io.woowtech.app=headscale

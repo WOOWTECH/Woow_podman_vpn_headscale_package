@@ -30,6 +30,19 @@ sed -e 's|^HEADSCALE_SERVER_URL=.*|HEADSCALE_SERVER_URL=https://vpn.example.net|
     "$REPO/config/headscale.env.example" >"$ngrok_env"
 run_variant ngrok-optional "$ngrok_env" "${base[@]}" "$REPO/quadlet/optional/headscale-ngrok.container"
 check "reserved ngrok URL is rendered" has_line ngrok-optional headscale-ngrok.container 'Exec=http headscale-entrance:8081 --url https://vpn.example.net --log stdout --inspect=false'
+auto_env=$WORK/ngrok-auto.env
+sed -e 's|^HEADSCALE_NGROK_ENABLED=.*|HEADSCALE_NGROK_ENABLED=true|' \
+    "$REPO/config/headscale.env.example" >"$auto_env"
+run_variant ngrok-auto "$auto_env" "${base[@]}" "$REPO/quadlet/optional/headscale-ngrok.container"
+check "dev-domain ngrok URL is discovered rather than hard-coded" has_line ngrok-auto headscale-ngrok.container \
+  'Exec=http headscale-entrance:8081 --log stdout --inspect=false'
+tcp_env=$WORK/ngrok-tcp.env
+sed -e 's|^HEADSCALE_NGROK_ENABLED=.*|HEADSCALE_NGROK_ENABLED=true|' \
+    -e 's|^HEADSCALE_NGROK_MODE=.*|HEADSCALE_NGROK_MODE=tcp|' \
+    "$REPO/config/headscale.env.example" >"$tcp_env"
+run_variant ngrok-tcp "$tcp_env" "${base[@]}" "$REPO/quadlet/optional/headscale-ngrok.container"
+check "TCP ngrok mode forwards through the filtered entrance" has_line ngrok-tcp headscale-ngrok.container \
+  'Exec=tcp headscale-entrance:8081 --log stdout'
 check "the ExecStartPre readiness loop uses no shell variable (systemd would expand it)" \
   bash -c "! grep -E '^ExecStartPre=' '$WORK/example/out/headplane.container' | grep -q '[\$]'"
 
@@ -94,6 +107,7 @@ reject "a non-boolean cookie_secure" HEADPLANE_COOKIE_SECURE 'yes'
 reject "an IPv4 prefix that is not a CIDR" HEADSCALE_IPV4_PREFIX '100.64.0.0'
 reject "a headplane port that collides with headscale" WOOW_HEADPLANE_PORT '28080'
 reject "an invalid ngrok enabled setting" HEADSCALE_NGROK_ENABLED 'yes'
+reject "an invalid ngrok mode" HEADSCALE_NGROK_MODE 'udp'
 reject_env "ngrok with a different server URL" "$ngrok_env" HEADSCALE_SERVER_URL 'http://localhost:28080'
 # The server_url host must not live inside the MagicDNS base domain: headscale refuses to start,
 # because its own URL would resolve through the tailnet.
