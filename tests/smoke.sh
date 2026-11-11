@@ -118,6 +118,11 @@ except urllib.error.HTTPError as error:
     print(error.code)
 ' "$(hs_url HEADPLANE /admin/)")
 if [[ $code == 200 ]]; then pass "A4 valid entrance password opens Headplane"; else fail "A4 valid entrance password returned $code"; fi
+if python3 "$REPO/tests/headplane-acl-ssr.py" "$(hs_url HEADPLANE /admin/acls)"; then
+  pass "A4 repeated ACL page renders without an SSR error"
+else
+  fail "A4 repeated ACL page renders fail"
+fi
 
 # A5 the control plane answers its own CLI over the unix socket in headscale-run
 if hs_cli nodes list --output json >/dev/null 2>&1; then
@@ -175,7 +180,7 @@ got=$(podman inspect --format '{{.ImageName}}' headscale 2>/dev/null || true)
 if [[ $got == "$HEADSCALE_IMAGE" ]]; then pass "A10 headscale runs $HEADSCALE_IMAGE"; else fail "A10 headscale runs '${got:-nothing}', want $HEADSCALE_IMAGE"; fi
 got=$(podman inspect --format '{{.Image}}' headplane 2>/dev/null || true)
 want=$(podman image inspect --format '{{.Id}}' "$HEADPLANE_IMAGE" 2>/dev/null || true)
-if [[ -n $want && $got == "$want" ]]; then pass "A10 headplane runs the pinned digest"; else fail "A10 headplane does not run the pinned digest"; fi
+if [[ -n $want && $got == "$want" ]]; then pass "A10 headplane runs the selected local image"; else fail "A10 headplane does not run the selected local image"; fi
 
 printf '%s passed, %s failed, %s warnings\n' "$npass" "$nfail" "$nwarn"
 ((nfail == 0))

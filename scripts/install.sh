@@ -77,11 +77,25 @@ ensure_image() {
     || ql_die "building $HEADSCALE_IMAGE failed; nothing was changed"
 }
 
+ensure_headplane_image() {
+  if podman image exists "$HEADPLANE_IMAGE"; then
+    if [[ $build != always ]]; then return 0; fi
+  elif [[ $build == never ]]; then
+    ql_die "$HEADPLANE_IMAGE does not exist and --no-build was given (run scripts/build-headplane.sh)"
+  fi
+  if dry; then
+    ql_info "[dry-run] would build $HEADPLANE_IMAGE from pinned Headplane 0.7.1 source"
+    return 0
+  fi
+  "$REPO/scripts/build-headplane.sh" "$HEADPLANE_IMAGE"
+}
+
 # ---- --build-only: the image and nothing else ---------------------------------------------------
 if ((build_only)); then
   ql_require_rootless
   ql_require_podman_min "$PODMAN_MIN"
   ensure_image
+  ensure_headplane_image
   ql_info "image ready: $HEADSCALE_IMAGE"
   exit 0
 fi
@@ -134,7 +148,8 @@ done
 
 # ---- 5. images before any unit change -----------------------------------------------------------
 ensure_image
-if dry && ! podman image exists "$HEADSCALE_IMAGE"; then
+ensure_headplane_image
+if dry && { ! podman image exists "$HEADSCALE_IMAGE" || ! podman image exists "$HEADPLANE_IMAGE"; }; then
   ql_info "[dry-run] $HEADSCALE_IMAGE is not built yet; skipping the pull of the other image"
 else
   ql_pull_images "$WORK/out"

@@ -19,7 +19,7 @@ and **Headplane 0.7.1** as its admin UI, installed as rootless Quadlet units man
 | Unit | Container | Image | Published by default |
 |---|---|---|---|
 | `headscale.service` | `headscale` | `localhost/woow-headscale:0.29.4-r1` (built locally) | `127.0.0.1:28080` → 8080, `127.0.0.1:29090` → 9090 |
-| `headplane.service` | `headplane` | `ghcr.io/tale/headplane:0.7.1` (digest-pinned) | private Podman network only |
+| `headplane.service` | `headplane` | `localhost/woow-headplane:0.7.1-ssr1` (upstream 0.7.1 with ACL SSR fix) | private Podman network only |
 | `headscale-entrance.service` | `headscale-entrance` | `nginxinc/nginx-unprivileged:1.27-alpine` (digest-pinned) | `127.0.0.1:23000` → 3000 |
 | `headscale-ngrok.service` (optional) | `headscale-ngrok` | `ngrok/ngrok:3.39.11-alpine` (digest-pinned) | no host port; public HTTPS or test-only TCP tunnel |
 | `headscale-network.service` | – | – | podman network `headscale-net` |

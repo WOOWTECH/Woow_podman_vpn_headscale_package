@@ -18,7 +18,7 @@ English: [README.md](README.md)
 | Unit | 容器 | 映像 | 預設發布位址 |
 |---|---|---|---|
 | `headscale.service` | `headscale` | `localhost/woow-headscale:0.29.4-r1`（本機建置） | `127.0.0.1:28080` → 8080、`127.0.0.1:29090` → 9090 |
-| `headplane.service` | `headplane` | `ghcr.io/tale/headplane:0.7.1`（digest 釘選） | 僅 Podman 私有網路 |
+| `headplane.service` | `headplane` | `localhost/woow-headplane:0.7.1-ssr1`（官方 0.7.1 加 ACL SSR 修補） | 僅 Podman 私有網路 |
 | `headscale-entrance.service` | `headscale-entrance` | `nginxinc/nginx-unprivileged:1.27-alpine`（digest 釘選） | `127.0.0.1:23000` → 3000 |
 | `headscale-ngrok.service`（選用） | `headscale-ngrok` | `ngrok/ngrok:3.39.11-alpine`（digest 釘選） | 不發布主機埠；外部 HTTPS 或測試用 TCP tunnel |
 | `headscale-network.service` | – | – | podman 網路 `headscale-net` |
