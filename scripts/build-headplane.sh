@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Rebuild the Headplane 0.7.1 UI from the pinned upstream source and one ACL SSR patch.
+# Rebuild Headplane 0.7.1 with the ACL, DNS-record and proxy-auth fixes.
 set -euo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
-IMAGE=${1:-localhost/woow-headplane:0.7.1-ssr1}
+IMAGE=${1:-localhost/woow-headplane:0.7.1-woow2}
 SOURCE_COMMIT=30c842ed8dbf011e78596e3a474133ec4069ba79
 NODE_IMAGE=docker.io/library/node:24-bookworm@sha256:8fa96264f302f58bbb13aa7339c541547b56975766ce956c875da149452a3e40
 UPSTREAM_IMAGE=ghcr.io/tale/headplane:0.7.1@sha256:394483fd2336ce6b15df360c3e118ddfd45eb8140fe21df9f2611077f5d79d22
@@ -16,6 +16,10 @@ git clone --quiet --depth 1 --branch v0.7.1 https://github.com/tale/headplane.gi
 }
 git -C "$WORK/source" apply --unidiff-zero --check "$REPO/patches/headplane-acl-ssr.patch"
 git -C "$WORK/source" apply --unidiff-zero "$REPO/patches/headplane-acl-ssr.patch"
+# WOOWTECH/headplane b2780eb: DNS extra records remain editable with a
+# read-only main config, and proxy-auth admins skip the SSO account picker.
+git -C "$WORK/source" apply --unidiff-zero --check "$REPO/patches/headplane-dns-proxy-auth.patch"
+git -C "$WORK/source" apply --unidiff-zero "$REPO/patches/headplane-dns-proxy-auth.patch"
 
 podman image exists "$NODE_IMAGE" || podman pull "$NODE_IMAGE" >/dev/null
 podman image exists "$UPSTREAM_IMAGE" || podman pull "$UPSTREAM_IMAGE" >/dev/null

@@ -19,7 +19,7 @@ and **Headplane 0.7.1** as its admin UI, installed as rootless Quadlet units man
 | Unit | Container | Image | Published by default |
 |---|---|---|---|
 | `headscale.service` | `headscale` | `localhost/woow-headscale:0.29.4-r1` (built locally) | `127.0.0.1:28080` → 8080, `127.0.0.1:29090` → 9090 |
-| `headplane.service` | `headplane` | `localhost/woow-headplane:0.7.1-ssr1` (upstream 0.7.1 with ACL SSR fix) | private Podman network only |
+| `headplane.service` | `headplane` | `localhost/woow-headplane:0.7.1-woow2` (upstream 0.7.1 with ACL SSR, DNS records and proxy-auth fixes) | private Podman network only |
 | `headscale-entrance.service` | `headscale-entrance` | `nginxinc/nginx-unprivileged:1.27-alpine` (digest-pinned) | `127.0.0.1:23000` → 3000 |
 | `headscale-ngrok.service` (optional) | `headscale-ngrok` | `ngrok/ngrok:3.39.11-alpine` (digest-pinned) | no host port; public HTTPS or test-only TCP tunnel |
 | `headscale-network.service` | – | – | podman network `headscale-net` |
@@ -64,7 +64,7 @@ skips that pause. `scripts/install.sh` is idempotent: a re-run with nothing chan
 restarts nothing and keeps generated secrets.
 
 The Headplane build uses `scripts/build-headplane.sh`: it checks the upstream
-v0.7.1 commit, applies the small ACL SSR patch, builds the UI with a digest-pinned
+v0.7.1 commit, applies the ACL SSR and WOOWTECH/headplane b2780eb DNS/proxy-auth patches, builds the UI with a digest-pinned
 Node 24 image, and layers that UI over the digest-pinned upstream Headplane image.
 `--no-build` requires both local images to exist already.
 

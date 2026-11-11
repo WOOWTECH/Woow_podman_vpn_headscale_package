@@ -1,5 +1,5 @@
-# Keep Headplane at the HA/PaaS 0.7.1 version, replacing only the React Router
-# app with a build that avoids resolving the client-only ACL editor during SSR.
+# Keep Headplane at 0.7.1, replacing the React Router app with a build that
+# includes the ACL SSR, writable DNS records and proxy-auth admin fixes.
 FROM ghcr.io/tale/headplane:0.7.1@sha256:394483fd2336ce6b15df360c3e118ddfd45eb8140fe21df9f2611077f5d79d22
 COPY build/client /app/build/client
 COPY build/server /app/build/server

@@ -20,7 +20,7 @@ After=headscale.service
 
 [Container]
 ContainerName=headplane
-Image=localhost/woow-headplane:0.7.1-ssr1
+Image=localhost/woow-headplane:0.7.1-woow2
 Pull=never
 Network=headscale.network
 HostName=headplane

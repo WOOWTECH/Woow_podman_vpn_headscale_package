@@ -1,0 +1,97 @@
+diff --git a/app/routes/dns/dns-actions.ts b/app/routes/dns/dns-actions.ts
+index 056e915..1aa8f5a 100644
+--- a/app/routes/dns/dns-actions.ts
++++ b/app/routes/dns/dns-actions.ts
+@@ -26,4 +25,0 @@ export async function dnsAction({ request, context }: Route.ActionArgs) {
+-  if (!headscaleConfig.writable()) {
+-    return data({ success: false }, 403);
+-  }
+-
+@@ -35,0 +32,10 @@ export async function dnsAction({ request, context }: Route.ActionArgs) {
++  // DNS records may live in a separate, writable file even when the main
++  // Headscale config is read-only, so record changes check that file instead.
++  const isRecordAction = action === "add_record" || action === "remove_record";
++  const canWrite = isRecordAction
++    ? headscaleConfig.dnsRecordsWritable()
++    : headscaleConfig.writable();
++  if (!canWrite) {
++    return data({ success: false }, 403);
++  }
++
+diff --git a/app/routes/dns/overview.tsx b/app/routes/dns/overview.tsx
+index b28e588..fd0bbe9 100644
+--- a/app/routes/dns/overview.tsx
++++ b/app/routes/dns/overview.tsx
+@@ -43,0 +44 @@ export async function loader({ request, context }: Route.LoaderArgs) {
++    recordsWritable: headscaleConfig.dnsRecordsWritable(),
+@@ -60,0 +62,2 @@ export default function Page() {
++  // Records can stay editable when they live in their own writable file.
++  const recordsDisabled = data.access === false || data.recordsWritable === false;
+@@ -66 +69,3 @@ export default function Page() {
+-          The Headscale configuration is read-only. You cannot make changes to the configuration
++          {data.recordsWritable
++            ? "The Headscale configuration is read-only. Only DNS records can be changed here."
++            : "The Headscale configuration is read-only. You cannot make changes to the configuration"}
+@@ -76 +81 @@ export default function Page() {
+-      <ManageRecords isDisabled={isDisabled} records={data.extraRecords} />
++      <ManageRecords isDisabled={recordsDisabled} records={data.extraRecords} />
+diff --git a/app/routes/home.tsx b/app/routes/home.tsx
+index aad6e0b..d0d3263 100644
+--- a/app/routes/home.tsx
++++ b/app/routes/home.tsx
+@@ -20 +20 @@ import { usersResource } from "~/server/headscale/live-store";
+-import { isUserPrincipal } from "~/server/web/auth";
++import { isUserPrincipal, shouldPromptHeadscaleLink } from "~/server/web/auth";
+@@ -36,0 +37 @@ export async function loader({ request, context }: Route.LoaderArgs) {
++  // Admins behind an auth proxy skip this (see shouldPromptHeadscaleLink).
+@@ -38 +39,4 @@ export async function loader({ request, context }: Route.LoaderArgs) {
+-  if (isUserPrincipal(principal) && !principal.user.headscaleUserId) {
++  if (
++    isUserPrincipal(principal) &&
++    shouldPromptHeadscaleLink(principal, auth.can(principal, Capabilities.ui_access))
++  ) {
+diff --git a/app/server/headscale/config-loader.ts b/app/server/headscale/config-loader.ts
+index f475b05..8c06c9d 100644
+--- a/app/server/headscale/config-loader.ts
++++ b/app/server/headscale/config-loader.ts
+@@ -146,0 +147,6 @@ interface HeadscaleConfig {
++  /**
++   * Whether DNS extra records can be changed. With `dns.extra_records_path` the
++   * records live in their own JSON file, which may be writable even when the
++   * main Headscale config is read-only (e.g. a ConfigMap managed by Helm).
++   */
++  dnsRecordsWritable: () => boolean;
+@@ -174,0 +181 @@ function createHeadscaleConfig(
++    dnsRecordsWritable: () => dnsRecordsWritable(state),
+@@ -224,0 +232,9 @@ function hasOIDCConfig(config: HeadscaleConfigState) {
++function dnsRecordsWritable(config: HeadscaleConfigState) {
++  if (config.dns) {
++    return config.dns.readable() && config.dns.writable();
++  }
++
++  // Records are inline in the main config, so they follow its access.
++  return readable(config) && writable(config);
++}
++
+diff --git a/app/server/web/auth.ts b/app/server/web/auth.ts
+index 910675b..230fd95 100644
+--- a/app/server/web/auth.ts
++++ b/app/server/web/auth.ts
+@@ -111,0 +112,17 @@ export function isUserPrincipal(principal: Principal): principal is UserPrincipa
++/**
++ * Whether the home page should ask the signed-in user to pick their Headscale user.
++ *
++ * The picker exists to match an SSO identity to a Headscale user. Behind an auth
++ * proxy (for example a platform entrance that sends one constant identity for
++ * whoever passed its own login) there is no SSO identity to match, and an admin who
++ * can use the UI manages every user and machine without being one of them. Those
++ * sessions skip the picker; linking stays available from the Users page.
++ */
++export function shouldPromptHeadscaleLink(principal: Principal, canUseUi: boolean): boolean {
++  if (!isUserPrincipal(principal) || principal.user.headscaleUserId) {
++    return false;
++  }
++
++  return !(principal.kind === "proxy" && canUseUi);
++}
++
