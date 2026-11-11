@@ -4,15 +4,15 @@
 
 ## 對照來源
 
-- HA add-on：[`WOOWTECH/Woow_ha_vpn_headscale_package`](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package)，main `1d774f077ebb6172accfb9ab927522ba45b9236d`，add-on 0.1.2。以 `headscale/config.yaml`、容器設定模板與服務啟動腳本為準。
+- HA add-on：[`WOOWTECH/Woow_ha_vpn_headscale_package`](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package)，main `43c2adf653b610d7d7005ed1d5d1bdb4b83cb2c1`，add-on 0.1.3 已發布並同步至 WOOW App Store。以 `headscale/config.yaml`、容器設定模板與服務啟動腳本為準；`192.168.2.121` 的正式實體仍在運行 0.1.2，尚未更新。
 - PaaS：Gitea `woow-paas-charts/charts/headscale`，main `573e6c471c8f4d2e84bdc80ba959c98f4aed5f08`，chart 0.1.8。透過 cluster1 的 kubeconfig 與 Gitea service 讀取並封存當前 main；以 `values.yaml`、`templates/configmap.yaml`、`templates/entrance-configmap.yaml`、`templates/statefulset.yaml` 為準。
-- Podman：`WOOWTECH/Woow_podman_vpn_headscale_package`；PR #9 已合併，後續 ACL 修補與外網驗收在 `feat/headscale-complete-parity-20261111`。主機 `woowtechopenclaw` 的 rootless Podman 4.9.3、`systemd --user`。HA main 於本輪重新 fetch，仍為 `1d774f0`；PaaS 以當時封存的 `573e6c4` 對照，直接讀 Gitea main 得到 Cloudflare Access 302，未重新取得現行內容。
+- Podman：`WOOWTECH/Woow_podman_vpn_headscale_package`；PR #9、#10 均已合併，後者 merge commit `d500fb5089cbd4e6c6a58033a432d19a71e097de`。主機 `woowtechopenclaw` 的 rootless Podman 4.9.3、`systemd --user`。PaaS 仍以當時封存的 `573e6c4` 對照，直接讀 Gitea main 得到 Cloudflare Access 302，未重新取得現行內容。
 
 ## 功能對照
 
 | 項目 | HA add-on | PaaS chart | 本次 Podman |
 |---|---|---|---|
-| 控制平面與網頁版本 | Headscale 0.29.4、Headplane 0.7.1 | 同左 | Headscale 0.29.4；Headplane 官方 0.7.1 基底加 ACL SSR 修補，原始提交與基底 digest 固定 |
+| 控制平面與網頁版本 | Headscale 0.29.4、Headplane 0.7.1；0.1.3 加 ACL SSR 修補 | 封存 chart 為 Headscale 0.29.4、Headplane 0.7.1；實際 JCR 映像及 ACL 狀態未重讀 | Headscale 0.29.4；Headplane 官方 0.7.1 基底加 ACL SSR 修補，原始提交與基底 digest 固定 |
 | 控制平面資料 | `/data`，HA 備份 | SQLite + PVC、啟動遷移 | SQLite WAL + `headscale-data` volume、冷備份與還原 |
 | DNS、節點期限、政策 | MagicDNS、base domain、檔案政策 | DNS 供應商、期限、資料庫政策 | MagicDNS、Cloudflare／Google／Quad9、期限、預設資料庫政策；另可選檔案政策 |
 | Headplane 入口 | HA ingress | nginx Basic Auth + Headplane proxy_auth；API key 有效期 1 年、到期前 30 天換發 | 私有 Headplane + nginx Basic Auth + proxy_auth；健康檢查、headers、每來源速率上限；新 API key 有效期 1 年、到期前 30 天換發 |
@@ -46,11 +46,17 @@ HA ingress、Kubernetes StatefulSet／PVC、NetworkPolicy、tenant operator 和 
 5. Headplane 瀏覽器驗證：首頁、Machines、Users、DNS、ACL、Settings、Pre-Auth Keys、Agent 頁可載入；以 UI 建立並刪除暫存使用者、建立並作廢 pre-auth key、有在線節點時開啟 Machine 詳細頁並改名，結果均在 Headscale CLI 核對。入口原來會把大量靜態模組計入每秒 5 次限流而回 429；已讓 `/admin/assets/` 不計入限流，重跑各頁未再遇到 429，管理頁與密碼驗證仍受限流／Basic Auth 保護。
 6. 原始 Headplane 0.7.1 的 ACL 頁在第一次 200 後反覆回 500，即使有效資料庫 policy 存在仍會發生；暫存 policy 已刪除，原本空政策狀態恢復。Restrictions 頁沒有 OIDC 設定，依上游程式碼回 501；Agent 未啟用時顯示設定說明。DNS 表單因 Headscale 設定唯讀被 Headplane 禁用。
 
-## PR #9 後續補驗
+## PR #9／#10 後續補驗
 
 1. ACL 500 已用 `tests/headplane-acl-ssr.py` 穩定重現：原始映像 5/5 回 500。直接繞過 nginx 從私有 Podman 網路請求也回 500；DNS 頁仍回 200。錯誤為 React SSR 的 `Element type is invalid ... undefined`。原始碼中 ACL 頁直接對 `.client` CodeMirror 元件做 `React.lazy()`；首次 SSR 後快取到伺服器端不存在的元件。`patches/headplane-acl-ssr.patch` 讓編輯器在瀏覽器 hydration 完成後才載入。釘選官方 v0.7.1 原始提交與官方基底映像，透過 `scripts/build-headplane.sh` 可重建。隔離容器連續 10 次直接請求 200；瀏覽器重載 3 次均載入 CodeMirror。正式部署前做無警告冷備份，切換後 `tests/smoke.sh` **30 passed、0 failed**，其中 ACL 連續 5 次 200。另用正式建置腳本重建測試映像並連續 5 次直接請求 200。
 2. [GitHub 外部節點驗收](https://github.com/WOOWTECH/Woow_podman_vpn_headscale_package/actions/runs/43045428172)：GitHub 託管 runner 從區網外經固定 HTTPS ngrok 網域加入本機 Headscale，取得 `100.64.0.2`，本機一次性節點為 `100.64.0.1`。本機 → runner 及 runner → 本機的 TSMP 都成功；runner 的一般 `tailscale ping` 回報直接路徑。工作結束後 Headscale 節點為 0、無未使用且未過期的測試 key，GitHub 暫存 secret 與 variable 均已刪除。這證實跨網路節點互通；長時間、不同 ISP 的持續性仍未驗收。
 3. HA add-on `1b7b4ce7_woow-headscale` 在 `192.168.2.121` 正運行且有 2 個節點，配置的 ngrok dev domain 正供它使用。未中斷其控制入口；等待短時中斷授權或另一帳號後，才能直接啟動 Podman 無 `--url` agent 做陽性驗收。[ngrok 官方文件](https://ngrok.com/docs/gateway/domains)說明每帳號只有一個自動分配且固定的 dev domain。PaaS 現行 Gitea main 仍被 Cloudflare Access 擋住；已請求 cluster1 kubeconfig／SSH 或 Access 授權。
+
+## HA add-on ACL 修補發布
+
+- HA 0.1.2 正式容器的 `/admin/acls` 連續五次回 500。相同的 hydration guard 已用於 HA 0.1.3；本機完整映像的隔離測試，在登入後連續五次取得實際 ACL 頁及 HTTP 200。
+- [HA PR #15](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package/pull/15) 已合併；amd64、aarch64 建置和 [0.1.2→0.1.3 升級驗證](https://github.com/WOOWTECH/Woow_ha_vpn_headscale_package/actions/runs/43049953982) 均通過。升級驗證保留原 API key、使用者及 pre-auth key，並經 HA Ingress 登入後對 ACL 頁連續五次確認 200。`v0.1.3` Release 與 WOOW App Store 同步完成。
+- 正式 HA 主機目前仍在 0.1.2，因其 ngrok dev domain 正承載 2 個已註冊節點；需安排短暫中斷再升級及驗收。這項發布不代表正式 HA 主機已更新。
 
 ## 仍待驗收
 
