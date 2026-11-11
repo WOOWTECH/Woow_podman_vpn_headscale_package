@@ -21,7 +21,7 @@ and **Headplane 0.7.1** as its admin UI, installed as rootless Quadlet units man
 | `headscale.service` | `headscale` | `localhost/woow-headscale:0.29.4-r1` (built locally) | `127.0.0.1:28080` → 8080, `127.0.0.1:29090` → 9090 |
 | `headplane.service` | `headplane` | `ghcr.io/tale/headplane:0.7.1` (digest-pinned) | private Podman network only |
 | `headscale-entrance.service` | `headscale-entrance` | `nginxinc/nginx-unprivileged:1.27-alpine` (digest-pinned) | `127.0.0.1:23000` → 3000 |
-| `headscale-ngrok.service` (optional) | `headscale-ngrok` | `ngrok/ngrok:3.39.11-alpine` (digest-pinned) | no host port; public HTTPS tunnel |
+| `headscale-ngrok.service` (optional) | `headscale-ngrok` | `ngrok/ngrok:3.39.11-alpine` (digest-pinned) | no host port; public HTTPS or test-only TCP tunnel |
 | `headscale-network.service` | – | – | podman network `headscale-net` |
 | `headscale-data-volume.service` | – | – | volume `headscale-data` (SQLite + noise key) |
 | `headscale-run-volume.service` | – | – | volume `headscale-run` (the gRPC unix socket) |
@@ -29,7 +29,9 @@ and **Headplane 0.7.1** as its admin UI, installed as rootless Quadlet units man
 
 **How the two halves are split.** Headscale *is* the VPN: it holds the node database, the noise
 key and the policy, and it is the only thing a Tailscale client ever talks to. Headplane is a web
-UI in front of Headscale's REST API and nothing more — stop it and not one node notices. They are
+UI in front of Headscale's REST API. Stopping it does not stop Headscale, but the optional public
+ngrok control path traverses an nginx entrance that depends on Headplane, so new registrations may
+pause while it is stopped. They are
 two units rather than one so that:
 
 * Headplane can be restarted, upgraded or removed without touching the control plane;
@@ -117,16 +119,18 @@ goes in front: a router port-forward to nginx / Traefik / NPM with `Upgrade` and
 passed through and `proxy_buffering off`. The details, with the tested compatibility matrix, are in
 [`docs/EXTERNAL-ACCESS.md`](docs/EXTERNAL-ACCESS.md).
 
-An optional ngrok Quadlet can expose only the control protocol through the entrance's private
-path filter. It requires a reserved domain: set `HEADSCALE_NGROK_ENABLED=true`,
-`HEADSCALE_NGROK_DOMAIN=<domain>` and `HEADSCALE_SERVER_URL=https://<domain>` together. Create the
-token without putting it on a command line: run `scripts/set-ngrok-token.sh` and type the token on
-stdin, then run `scripts/install.sh`. ngrok's assigned dev domain is stable across agent restarts;
-it can be used here if it is not already serving another endpoint. The installer requires its
-hostname explicitly so Headscale's persistent `server_url` and the tunnel agree. An ngrok platform
-API key cannot be passed to `set-ngrok-token.sh`: first use the ngrok API to create an agent
-authtoken, then store that token. The token is never written to a rendered unit or settings file.
-The default is off. The tested Podman endpoint and results are in
+An optional ngrok Quadlet exposes only the control protocol through the entrance's private path
+filter. Store an **agent authtoken** through `scripts/set-ngrok-token.sh` on stdin. For a reserved
+HTTPS domain, set `HEADSCALE_NGROK_ENABLED=true`, `HEADSCALE_NGROK_MODE=http`,
+`HEADSCALE_NGROK_DOMAIN=<domain>`, and `HEADSCALE_SERVER_URL=https://<domain>`. Leave the domain
+blank to use the account's unused dev domain; the installer discovers the live HTTPS URL and
+updates Headscale and Headplane before they start. `HEADSCALE_NGROK_MODE=tcp` supports temporary
+raw TCP tests and discovers an `http://host:port` control URL, without TLS. On each Headscale
+start the agent URL is read again; the smoke check rejects a stale or offline public URL. The
+account's dev domain is stable across agent restarts, but this host's account already uses it for
+another service, so production retains its reserved HTTPS domain. An ngrok platform API key cannot
+be passed to `set-ngrok-token.sh`; create an agent authtoken through the ngrok API first. No token
+is written to a rendered unit or settings file. The default is off. The tested endpoint and results are in
 [`docs/ALIGNMENT-2026-11-11.md`](docs/ALIGNMENT-2026-11-11.md).
 
 ## Secrets

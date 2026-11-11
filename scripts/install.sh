@@ -123,6 +123,7 @@ RENDER_ARGS=()
 render_args "$RENDER_ENV"
 ql_render "$WORK/src" "$RENDER_ENV" "$REPO/quadlet/render-vars" "$WORK/out" "${RENDER_ARGS[@]}"
 hs_render_configs "$RENDER_ENV" "$WORK/out"
+install -m 755 "$REPO/scripts/ngrok-sync.py" "$WORK/out/config/ngrok-sync.py"
 ql_dryrun "$WORK/out" --verify --ref-dir "$HOME/.config/containers/systemd" \
   || ql_die "the rendered units failed the Quadlet dry-run; nothing was installed"
 for f in "$WORK/out"/*; do
@@ -188,7 +189,21 @@ systemctl --user daemon-reload
 hs_ensure_quadlet_resources
 hs_ensure_extra_records
 
-# ---- 8. Headscale first ---------------------------------------------------------------------------
+# ---- 8. Resolve the actual ngrok URL before Headscale starts -------------------------------
+if [[ $(ql_env_get HEADSCALE_NGROK_ENABLED false) == true ]]; then
+  ql_apply_units "$APP" headscale-ngrok.service
+  old_url=$(ql_env_get HEADSCALE_SERVER_URL)
+  "$HOME/.config/headscale/ngrok-sync.py" --apply --timeout 90
+  app_env_load
+  if [[ $(ql_env_get HEADSCALE_SERVER_URL) != "$old_url" ]]; then
+    hs_render_configs "$RENDER_ENV" "$WORK/out"
+    ql_install_files "$WORK/out" "$APP" >/dev/null
+    ql_mark_changed "$APP" headscale.service headplane.service
+    ql_info "ngrok updated HEADSCALE_SERVER_URL from its live endpoint"
+  fi
+fi
+
+# ---- 9. Headscale first ---------------------------------------------------------------------------
 ql_apply_units "$APP" headscale.service
 # One gate, and the HTTP probe is what it believes: on a host whose podman healthcheck timers
 # never fire for a Quadlet-started container, waiting on .State.Health.Status hangs for the
@@ -196,21 +211,17 @@ ql_apply_units "$APP" headscale.service
 hs_wait_ready 300 headscale.service \
   || ql_die "headscale does not answer on $(hs_url HEADSCALE /health); see: journalctl --user -u headscale.service -n 100"
 
-# ---- 9. the headscale-side objects Headplane needs ------------------------------------------------
+# ---- 10. the headscale-side objects Headplane needs ------------------------------------------------
 hs_ensure_default_user
 if ((rotate)); then hs_ensure_api_key --rotate; else hs_ensure_api_key; fi
 ((${HS_API_KEY_CHANGED:-0} == 0)) || ql_mark_changed "$APP" headplane.service
 
-# ---- 10. Headplane ----------------------------------------------------------------------------
+# ---- 11. Headplane ----------------------------------------------------------------------------
 ql_apply_units "$APP" headplane.service
 ql_apply_units "$APP" headscale-entrance.service
 ql_wait_http "$(hs_url HEADPLANE /healthz-upstream)" '200' 180 \
   || ql_die "headplane does not answer through the entrance; see: journalctl --user -u headplane.service -u headscale-entrance.service -n 100"
-if [[ $(ql_env_get HEADSCALE_NGROK_ENABLED false) == true ]]; then
-  ql_apply_units "$APP" headscale-ngrok.service
-fi
-
-# ---- 11. smoke ---------------------------------------------------------------------------------
+# ---- 12. smoke ---------------------------------------------------------------------------------
 if ((no_smoke == 0)); then
   "$REPO/tests/smoke.sh" || ql_die "tests/smoke.sh failed; see the FAIL lines above"
 fi

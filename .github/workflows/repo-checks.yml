@@ -26,5 +26,10 @@ jobs:
       - name: The API key validator compiles and its rules hold
         run: python3 tests/test-validate-api-key.py
 
+      - name: ngrok URL discovery validates input and reconciles all three files
+        run: |
+          python3 -m py_compile scripts/ngrok-sync.py tests/ngrok-sync-test.py tests/remote-peers.py tests/headplane-browser.py tests/ngrok-tcp-uat.py
+          python3 tests/ngrok-sync-test.py
+
       - name: The readiness gate survives a host whose healthcheck timers never fire
         run: tests/health-gate.sh

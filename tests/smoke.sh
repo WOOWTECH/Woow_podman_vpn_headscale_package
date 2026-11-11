@@ -48,6 +48,12 @@ if [[ $(ql_env_get HEADSCALE_NGROK_ENABLED false) == true ]]; then
   else
     fail "A1 optional ngrok tunnel is not active"
   fi
+  ngrok_actual=$("$REPO/scripts/ngrok-sync.py" --print-url --timeout 10 2>/dev/null || true)
+  if [[ -n $ngrok_actual && $ngrok_actual == "$(ql_env_get HEADSCALE_SERVER_URL)" ]]; then
+    pass "A1 ngrok reports the configured public URL"
+  else
+    fail "A1 ngrok URL is absent or differs from HEADSCALE_SERVER_URL"
+  fi
 fi
 
 # A2 health. Only headscale carries a HealthCmd (we build that image), and it is judged by its
